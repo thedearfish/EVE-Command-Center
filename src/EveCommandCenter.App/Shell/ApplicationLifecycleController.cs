@@ -11,6 +11,7 @@ public sealed class ApplicationLifecycleController : IDisposable
     private readonly FirstRunStateStore firstRunStateStore;
     private readonly Action<int> shutdown;
     private readonly TrayIconService trayIcon;
+    private bool firstRunPending;
     private bool exitRequested;
     private bool windowClosed;
     private bool disposed;
@@ -31,25 +32,13 @@ public sealed class ApplicationLifecycleController : IDisposable
 
     public void Start(bool forceSettingsWindow)
     {
-        bool firstRun = firstRunStateStore.IsFirstRun();
-        if (!firstRun && !forceSettingsWindow)
+        firstRunPending = firstRunStateStore.IsFirstRun();
+        if (!firstRunPending && !forceSettingsWindow)
         {
             return;
         }
 
         ShowSettings();
-
-        if (firstRun)
-        {
-            try
-            {
-                firstRunStateStore.MarkCompleted();
-            }
-            catch
-            {
-                // Keep running. A write failure only means setup may be shown again next launch.
-            }
-        }
     }
 
     public void ShowSettings()
@@ -81,6 +70,7 @@ public sealed class ApplicationLifecycleController : IDisposable
         }
 
         exitRequested = true;
+        CompleteFirstRunIfNeeded();
         trayIcon.Dispose();
 
         if (!windowClosed)
@@ -111,6 +101,7 @@ public sealed class ApplicationLifecycleController : IDisposable
             return;
         }
 
+        CompleteFirstRunIfNeeded();
         e.Cancel = true;
         settingsWindow.Hide();
     }
@@ -118,5 +109,23 @@ public sealed class ApplicationLifecycleController : IDisposable
     private void OnSettingsWindowClosed(object? sender, EventArgs e)
     {
         windowClosed = true;
+    }
+
+    private void CompleteFirstRunIfNeeded()
+    {
+        if (!firstRunPending)
+        {
+            return;
+        }
+
+        try
+        {
+            firstRunStateStore.MarkCompleted();
+            firstRunPending = false;
+        }
+        catch
+        {
+            // Keep running. A write failure only means setup may be shown again next launch.
+        }
     }
 }
