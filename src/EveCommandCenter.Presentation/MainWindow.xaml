@@ -1,159 +1,240 @@
 <Window x:Class="EveCommandCenter.Presentation.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:preview="clr-namespace:EveCommandCenter.Windows.Preview;assembly=EveCommandCenter.Windows"
         Title="{Binding Title}"
-        Width="1240"
-        Height="820"
-        MinWidth="980"
-        MinHeight="660"
+        Width="900"
+        Height="720"
+        MinWidth="780"
+        MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Background="#0E141B"
         Foreground="#E6EDF3"
         FontFamily="Segoe UI">
-  <Grid Margin="24">
+  <Window.Resources>
+    <Style x:Key="CardStyle" TargetType="Border">
+      <Setter Property="Padding" Value="22" />
+      <Setter Property="Margin" Value="0,0,0,14" />
+      <Setter Property="Background" Value="#151E27" />
+      <Setter Property="BorderBrush" Value="#263544" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Height" Value="34" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Background" Value="#0F171F" />
+      <Setter Property="Foreground" Value="#E6EDF3" />
+      <Setter Property="BorderBrush" Value="#34495C" />
+      <Setter Property="CaretBrush" Value="#E6EDF3" />
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Margin" Value="0,0,0,12" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style x:Key="MutedText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#8B9AAA" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="26">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="18" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="18" />
       <RowDefinition Height="*" />
-      <RowDefinition Height="18" />
+      <RowDefinition Height="16" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <StackPanel>
-      <TextBlock Text="{Binding Title}" FontSize="30" FontWeight="SemiBold" />
-      <TextBlock Margin="0,6,0,0"
-                 Foreground="#8B9AAA"
-                 FontSize="14"
-                 Text="Live EVE client previews powered by Desktop Window Manager" />
-    </StackPanel>
+    <DockPanel>
+      <StackPanel>
+        <TextBlock FontSize="30" FontWeight="SemiBold" Text="EVE Command Center" />
+        <TextBlock Margin="0,6,0,0"
+                   Style="{StaticResource MutedText}"
+                   FontSize="14"
+                   Text="Settings for floating EVE previews, tray behavior and character switching." />
+      </StackPanel>
+      <Border DockPanel.Dock="Right"
+              Margin="20,2,0,0"
+              Padding="14,9"
+              VerticalAlignment="Top"
+              Background="#101820"
+              BorderBrush="#2C3B4A"
+              BorderThickness="1"
+              CornerRadius="8">
+        <StackPanel>
+          <TextBlock FontSize="12" Foreground="#8B9AAA" Text="CLIENT STATUS" />
+          <TextBlock Margin="0,4,0,0" FontWeight="SemiBold" Text="{Binding ClientSummary}" />
+        </StackPanel>
+      </Border>
+    </DockPanel>
 
-    <UniformGrid Grid.Row="2" Columns="4">
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="EVE CLIENTS" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding ClientCount}" />
-        </StackPanel>
-      </Border>
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="LIVE PREVIEWS" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding CharacterCount}" />
-        </StackPanel>
-      </Border>
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="CHARACTER SELECT" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding CharacterSelectionCount}" />
-        </StackPanel>
-      </Border>
-      <Border Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="LAST SCAN" />
-          <TextBlock Margin="0,8,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding LastScanText}" />
-        </StackPanel>
-      </Border>
-    </UniformGrid>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="0,0,8,0">
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Startup and tray" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="After initial setup the application starts silently in the system tray. Closing this window hides it; Exit in the tray menu fully stops the application." />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Width="44" Height="44" Background="#0F2932" CornerRadius="22">
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="20"
+                           Foreground="#55C2A2"
+                           Text="●" />
+              </Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Tray-first mode enabled" />
+                <TextBlock Margin="0,3,0,0"
+                           Style="{StaticResource MutedText}"
+                           Text="Double-click the tray icon to open these settings again." />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Floating previews" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="Preview windows are created dynamically for characters that are actually logged in. Character Selection is excluded." />
+
+            <CheckBox IsChecked="{Binding AutoCreatePreviews}"
+                      Content="Automatically create previews for logged-in characters" />
+            <CheckBox IsChecked="{Binding AlwaysOnTop}"
+                      Content="Keep preview windows always on top" />
+            <CheckBox IsChecked="{Binding ShowPreviewHeader}"
+                      Content="Show character name and status header" />
+
+            <Grid Margin="0,8,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="24" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Preview width" />
+                <TextBox Text="{Binding PreviewWidth, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Preview height" />
+                <TextBox Text="{Binding PreviewHeight, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <DockPanel Margin="0,0,0,6">
+                  <TextBlock Foreground="#8B9AAA" Text="Opacity" />
+                  <TextBlock DockPanel.Dock="Right"
+                             HorizontalAlignment="Right"
+                             Foreground="#C6D1DC"
+                             Text="{Binding PreviewOpacityPercent, StringFormat={}{0}%}" />
+                </DockPanel>
+                <Slider Minimum="0.35"
+                        Maximum="1"
+                        TickFrequency="0.05"
+                        IsSnapToTickEnabled="True"
+                        Value="{Binding PreviewOpacity}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Global hotkeys" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="Use combinations such as Ctrl+Alt+Right, Ctrl+Shift+PageDown or Alt+P. Click Save to register changes." />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Next character" />
+                <TextBox Text="{Binding NextCharacterHotkey, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Previous character" />
+                <TextBox Text="{Binding PreviousCharacterHotkey, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Show / hide previews" />
+                <TextBox Text="{Binding TogglePreviewsHotkey, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Detected clients" />
+            <TextBlock Margin="0,6,0,14"
+                       Style="{StaticResource MutedText}"
+                       Text="This is a status list only. Live images appear in independent floating windows, not inside the settings application." />
+            <ItemsControl ItemsSource="{Binding Clients}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,0,8"
+                          Padding="12"
+                          Background="#101820"
+                          BorderBrush="#263544"
+                          BorderThickness="1"
+                          CornerRadius="7">
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Right"
+                                 VerticalAlignment="Center"
+                                 Foreground="#8B9AAA"
+                                 Text="{Binding State}" />
+                      <StackPanel>
+                        <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                        <TextBlock Margin="0,3,0,0"
+                                   Foreground="#8B9AAA"
+                                   Text="{Binding WindowTitle}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
 
     <Border Grid.Row="4"
-            Padding="18"
-            Background="#151E27"
-            BorderBrush="#263544"
-            BorderThickness="1"
-            CornerRadius="10">
-      <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="14" />
-          <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <StackPanel>
-          <TextBlock FontSize="22" FontWeight="SemiBold" Text="Client previews" />
-          <TextBlock Margin="0,5,0,0"
-                     Foreground="#8B9AAA"
-                     Text="Ready characters render live. Character Selection remains excluded." />
-        </StackPanel>
-
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding PreviewClients}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Width="555"
-                        Height="360"
-                        Margin="0,0,12,12"
-                        Padding="12"
-                        Background="#101820"
-                        BorderBrush="#2C3B4A"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="10" />
-                      <RowDefinition Height="*" />
-                      <RowDefinition Height="8" />
-                      <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <DockPanel>
-                      <StackPanel>
-                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding DisplayName}" />
-                        <TextBlock Margin="0,3,0,0" Foreground="#8B9AAA" Text="{Binding WindowTitle}" />
-                      </StackPanel>
-                      <TextBlock DockPanel.Dock="Right"
-                                 HorizontalAlignment="Right"
-                                 Foreground="#8B9AAA"
-                                 FontFamily="Consolas"
-                                 Text="{Binding WindowId}" />
-                    </DockPanel>
-
-                    <Border Grid.Row="2"
-                            Background="#070B10"
-                            BorderBrush="#263544"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            ClipToBounds="True">
-                      <Grid>
-                        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
-                        <TextBlock Margin="12"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="#D96C75"
-                                   TextWrapping="Wrap"
-                                   Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type preview:DwmThumbnailHost}}, Path=ErrorText}" />
-                      </Grid>
-                    </Border>
-
-                    <TextBlock Grid.Row="4" Foreground="#8B9AAA">
-                      <Run Text="PID: " /><Run Text="{Binding ProcessId, Mode=OneWay}" />
-                      <Run Text=" · Visible: " /><Run Text="{Binding IsVisible, Mode=OneWay}" />
-                      <Run Text=" · Minimized: " /><Run Text="{Binding IsMinimized, Mode=OneWay}" />
-                      <Run Text=" · Responsive: " /><Run Text="{Binding IsResponsive, Mode=OneWay}" />
-                    </TextBlock>
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
-      </Grid>
-    </Border>
-
-    <Border Grid.Row="6"
-            Padding="12,8"
+            Padding="14,10"
             Background="#111A22"
             BorderBrush="#263544"
             BorderThickness="1"
             CornerRadius="8">
-      <TextBlock Foreground="#8B9AAA" Text="{Binding StatusMessage}" />
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Width="120"
+                Height="36"
+                Margin="18,0,0,0"
+                Background="#1E6F9F"
+                Foreground="White"
+                BorderThickness="0"
+                FontWeight="SemiBold"
+                Command="{Binding SaveCommand}"
+                Content="Save settings" />
+        <TextBlock VerticalAlignment="Center"
+                   Foreground="#A7B4C0"
+                   Text="{Binding StatusMessage}" />
+      </DockPanel>
     </Border>
   </Grid>
 </Window>
