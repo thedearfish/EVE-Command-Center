@@ -33,7 +33,20 @@ jobs:
         run: dotnet restore EveCommandCenter.sln
 
       - name: Build
-        run: dotnet build EveCommandCenter.sln --configuration Release --no-restore
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/diagnostics | Out-Null
+          dotnet build EveCommandCenter.sln --configuration Release --no-restore 2>&1 | Tee-Object -FilePath artifacts/diagnostics/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: artifacts/diagnostics/build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Test
         run: dotnet test EveCommandCenter.sln --configuration Release --no-build --collect:"XPlat Code Coverage"
