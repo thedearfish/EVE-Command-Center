@@ -137,7 +137,7 @@ public partial class App : System.Windows.Application
 
         try
         {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch
         {
