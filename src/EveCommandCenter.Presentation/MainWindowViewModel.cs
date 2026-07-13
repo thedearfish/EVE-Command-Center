@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using System.Windows.Threading;
 using EveCommandCenter.Application.Discovery;
 
@@ -11,16 +12,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IWindowSnapshotSource windowSnapshotSource;
     private readonly EveWindowClassifier classifier;
     private readonly DispatcherTimer timer;
-    private string statusMessage = "Waiting for first scan...";
-    private DateTimeOffset? lastScanAt;
+    private string statusMessage = "Starting EVE client monitoring...";
+    private bool autoCreatePreviews;
+    private bool alwaysOnTop;
+    private bool showPreviewHeader;
+    private int previewWidth;
+    private int previewHeight;
+    private double previewOpacity;
+    private string nextCharacterHotkey;
+    private string previousCharacterHotkey;
+    private string togglePreviewsHotkey;
     private bool disposed;
 
     public MainWindowViewModel(
         IWindowSnapshotSource windowSnapshotSource,
-        EveWindowClassifier classifier)
+        EveWindowClassifier classifier,
+        SettingsSnapshot settings)
     {
         this.windowSnapshotSource = windowSnapshotSource;
         this.classifier = classifier;
+
+        autoCreatePreviews = settings.AutoCreatePreviews;
+        alwaysOnTop = settings.AlwaysOnTop;
+        showPreviewHeader = settings.ShowPreviewHeader;
+        previewWidth = settings.PreviewWidth;
+        previewHeight = settings.PreviewHeight;
+        previewOpacity = settings.PreviewOpacity;
+        nextCharacterHotkey = settings.NextCharacterHotkey;
+        previousCharacterHotkey = settings.PreviousCharacterHotkey;
+        togglePreviewsHotkey = settings.TogglePreviewsHotkey;
+
+        SaveCommand = new RelayCommand(() => SettingsSaveRequested?.Invoke(this, EventArgs.Empty));
 
         timer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -34,11 +56,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string Title => "EVE Command Center";
+    public event EventHandler? SettingsSaveRequested;
+
+    public string Title => "EVE Command Center — Settings";
 
     public ObservableCollection<DetectedClientViewModel> Clients { get; } = [];
 
     public IEnumerable<DetectedClientViewModel> PreviewClients => Clients.Where(client => client.IsPreviewEligible);
+
+    public ICommand SaveCommand { get; }
 
     public string StatusMessage
     {
@@ -52,9 +78,83 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public int CharacterSelectionCount => Clients.Count(client => client.State == "Character Selection");
 
-    public string LastScanText => lastScanAt is null
-        ? "Never"
-        : lastScanAt.Value.LocalDateTime.ToString("HH:mm:ss.fff");
+    public string ClientSummary => CharacterCount switch
+    {
+        0 when CharacterSelectionCount == 0 => "No EVE clients detected",
+        0 => $"{CharacterSelectionCount} client(s) at Character Selection",
+        _ when CharacterSelectionCount == 0 => $"{CharacterCount} logged-in character(s) detected",
+        _ => $"{CharacterCount} logged in · {CharacterSelectionCount} at Character Selection",
+    };
+
+    public bool AutoCreatePreviews
+    {
+        get => autoCreatePreviews;
+        set => SetField(ref autoCreatePreviews, value);
+    }
+
+    public bool AlwaysOnTop
+    {
+        get => alwaysOnTop;
+        set => SetField(ref alwaysOnTop, value);
+    }
+
+    public bool ShowPreviewHeader
+    {
+        get => showPreviewHeader;
+        set => SetField(ref showPreviewHeader, value);
+    }
+
+    public int PreviewWidth
+    {
+        get => previewWidth;
+        set => SetField(ref previewWidth, Math.Clamp(value, 220, 1920));
+    }
+
+    public int PreviewHeight
+    {
+        get => previewHeight;
+        set => SetField(ref previewHeight, Math.Clamp(value, 140, 1080));
+    }
+
+    public double PreviewOpacity
+    {
+        get => previewOpacity;
+        set => SetField(ref previewOpacity, Math.Clamp(value, 0.35, 1.0));
+    }
+
+    public int PreviewOpacityPercent => (int)Math.Round(PreviewOpacity * 100);
+
+    public string NextCharacterHotkey
+    {
+        get => nextCharacterHotkey;
+        set => SetField(ref nextCharacterHotkey, value.Trim());
+    }
+
+    public string PreviousCharacterHotkey
+    {
+        get => previousCharacterHotkey;
+        set => SetField(ref previousCharacterHotkey, value.Trim());
+    }
+
+    public string TogglePreviewsHotkey
+    {
+        get => togglePreviewsHotkey;
+        set => SetField(ref togglePreviewsHotkey, value.Trim());
+    }
+
+    public SettingsSnapshot CreateSettingsSnapshot() =>
+        new(
+            AutoCreatePreviews,
+            AlwaysOnTop,
+            ShowPreviewHeader,
+            PreviewWidth,
+            PreviewHeight,
+            PreviewOpacity,
+            NextCharacterHotkey,
+            PreviousCharacterHotkey,
+            TogglePreviewsHotkey);
+
+    public void SetSettingsResult(string message) => StatusMessage = message;
 
     public void Refresh()
     {
@@ -115,14 +215,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             SortClients();
-            lastScanAt = DateTimeOffset.Now;
-            StatusMessage = $"Scanning every {timer.Interval.TotalMilliseconds:0} ms · " +
-                            $"{ClientCount} EVE client(s) detected · Last scan {LastScanText}";
             NotifyCounters();
+            StatusMessage = ClientSummary;
         }
         catch (Exception exception)
         {
-            StatusMessage = $"Window scan failed: {exception.Message}";
+            StatusMessage = $"EVE client monitoring failed: {exception.Message}";
         }
     }
 
@@ -162,21 +260,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ClientCount));
         OnPropertyChanged(nameof(CharacterCount));
         OnPropertyChanged(nameof(CharacterSelectionCount));
-        OnPropertyChanged(nameof(LastScanText));
+        OnPropertyChanged(nameof(ClientSummary));
         OnPropertyChanged(nameof(PreviewClients));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
         {
-            return;
+            return false;
         }
 
         field = value;
         OnPropertyChanged(propertyName);
+
+        if (propertyName == nameof(PreviewOpacity))
+        {
+            OnPropertyChanged(nameof(PreviewOpacityPercent));
+        }
+
+        return true;
     }
 }
