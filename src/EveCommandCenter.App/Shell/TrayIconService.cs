@@ -9,9 +9,13 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.NotifyIcon notifyIcon;
     private bool disposed;
 
-    public TrayIconService(Action showSettings, Action exitApplication)
+    public TrayIconService(
+        Action showSettings,
+        Action togglePreviews,
+        Action exitApplication)
     {
         ArgumentNullException.ThrowIfNull(showSettings);
+        ArgumentNullException.ThrowIfNull(togglePreviews);
         ArgumentNullException.ThrowIfNull(exitApplication);
 
         contextMenu = new Forms.ContextMenuStrip();
@@ -19,10 +23,14 @@ public sealed class TrayIconService : IDisposable
         var settingsItem = new Forms.ToolStripMenuItem("Settings...");
         settingsItem.Click += (_, _) => showSettings();
 
+        var togglePreviewsItem = new Forms.ToolStripMenuItem("Show / hide previews");
+        togglePreviewsItem.Click += (_, _) => togglePreviews();
+
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => exitApplication();
 
         contextMenu.Items.Add(settingsItem);
+        contextMenu.Items.Add(togglePreviewsItem);
         contextMenu.Items.Add(new Forms.ToolStripSeparator());
         contextMenu.Items.Add(exitItem);
 
