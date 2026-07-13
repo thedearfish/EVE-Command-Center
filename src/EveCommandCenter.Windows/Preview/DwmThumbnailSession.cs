@@ -131,10 +131,28 @@ public sealed class DwmThumbnailSession : IDisposable
         ref DwmThumbnailProperties properties);
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly record struct NativeRect(int Left, int Top, int Right, int Bottom);
+    private struct NativeRect
+    {
+        public NativeRect(int left, int top, int right, int bottom)
+        {
+            Left = left;
+            Top = top;
+            Right = right;
+            Bottom = bottom;
+        }
+
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly record struct NativeSize(int Width, int Height);
+    private struct NativeSize
+    {
+        public int Width;
+        public int Height;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct DwmThumbnailProperties
