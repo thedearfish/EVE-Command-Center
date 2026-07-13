@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using EveCommandCenter.Application.Preview;
 using EveCommandCenter.Core.Clients;
 
 namespace EveCommandCenter.Windows.Preview;
@@ -98,7 +99,6 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
             session = DwmThumbnailSession.Register(
                 new WindowId(destinationHandle.ToInt64()),
                 new WindowId(SourceWindowId));
-
             UpdateThumbnail();
         }
         catch (Win32Exception exception)
@@ -148,13 +148,18 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
             }
 
             DwmThumbnailSize sourceSize = session.GetSourceSize();
-            DwmThumbnailBounds fitted = DwmThumbnailLayout.Fit(
-                sourceSize,
-                new DwmThumbnailBounds(topLeft.X, topLeft.Y, availableWidth, availableHeight));
+            PreviewRectangle fitted = PreviewLayoutCalculator.Fit(
+                sourceSize.Width,
+                sourceSize.Height,
+                new PreviewRectangle(topLeft.X, topLeft.Y, availableWidth, availableHeight));
 
             if (fitted.Width > 0 && fitted.Height > 0)
             {
-                session.Update(fitted);
+                session.Update(new DwmThumbnailBounds(
+                    fitted.Left,
+                    fitted.Top,
+                    fitted.Width,
+                    fitted.Height));
                 ErrorText = string.Empty;
             }
         }
