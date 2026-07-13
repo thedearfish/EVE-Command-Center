@@ -51,12 +51,12 @@ jobs:
       - name: Test
         run: dotnet test EveCommandCenter.sln --configuration Release --no-build --collect:"XPlat Code Coverage"
 
-      - name: Publish Windows test build
-        run: dotnet publish src/EveCommandCenter.App/EveCommandCenter.App.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/EVE-Command-Center
+      - name: Publish Windows self-contained test build
+        run: dotnet publish src/EveCommandCenter.App/EveCommandCenter.App.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false --output artifacts/EVE-Command-Center
 
       - name: Upload Windows test build
         uses: actions/upload-artifact@v4
         with:
-          name: EVE-Command-Center-win-x64
+          name: EVE-Command-Center-win-x64-self-contained
           path: artifacts/EVE-Command-Center
           if-no-files-found: error
