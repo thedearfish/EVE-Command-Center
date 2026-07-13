@@ -122,7 +122,7 @@
                             CornerRadius="6"
                             ClipToBounds="True">
                       <Grid>
-                        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId}" />
+                        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
                         <TextBlock Margin="12"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -133,10 +133,10 @@
                     </Border>
 
                     <TextBlock Grid.Row="4" Foreground="#8B9AAA">
-                      <Run Text="PID: " /><Run Text="{Binding ProcessId}" />
-                      <Run Text=" · Visible: " /><Run Text="{Binding IsVisible}" />
-                      <Run Text=" · Minimized: " /><Run Text="{Binding IsMinimized}" />
-                      <Run Text=" · Responsive: " /><Run Text="{Binding IsResponsive}" />
+                      <Run Text="PID: " /><Run Text="{Binding ProcessId, Mode=OneWay}" />
+                      <Run Text=" · Visible: " /><Run Text="{Binding IsVisible, Mode=OneWay}" />
+                      <Run Text=" · Minimized: " /><Run Text="{Binding IsMinimized, Mode=OneWay}" />
+                      <Run Text=" · Responsive: " /><Run Text="{Binding IsResponsive, Mode=OneWay}" />
                     </TextBlock>
                   </Grid>
                 </Border>
