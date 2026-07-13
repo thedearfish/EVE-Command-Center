@@ -4,4 +4,8 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>EveCommandCenter.Presentation</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\EveCommandCenter.Application\EveCommandCenter.Application.csproj" />
+    <ProjectReference Include="..\EveCommandCenter.Core\EveCommandCenter.Core.csproj" />
+  </ItemGroup>
 </Project>
