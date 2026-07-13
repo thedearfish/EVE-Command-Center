@@ -26,7 +26,7 @@ public sealed class ApplicationLifecycleController : IDisposable
 
         settingsWindow.Closing += OnSettingsWindowClosing;
         settingsWindow.Closed += OnSettingsWindowClosed;
-        trayIcon = new TrayIconService(ShowSettings, RequestExit);
+        trayIcon = new TrayIconService(ShowSettings, () => RequestExit(0));
     }
 
     public void Start(bool forceSettingsWindow)
@@ -73,7 +73,7 @@ public sealed class ApplicationLifecycleController : IDisposable
         settingsWindow.Focus();
     }
 
-    public void RequestExit()
+    public void RequestExit(int exitCode)
     {
         if (exitRequested)
         {
@@ -88,7 +88,7 @@ public sealed class ApplicationLifecycleController : IDisposable
             settingsWindow.Close();
         }
 
-        shutdown(0);
+        shutdown(exitCode);
     }
 
     public void Dispose()
