@@ -2,6 +2,8 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using EveCommandCenter.App.Shell;
+using EveCommandCenter.App.Startup;
 using EveCommandCenter.Application.Discovery;
 using EveCommandCenter.Presentation;
 using EveCommandCenter.Windows.Discovery;
@@ -12,6 +14,7 @@ public partial class App : System.Windows.Application
 {
     private static readonly object LogSync = new();
     private static readonly string LogPath = CreateLogPath();
+    private ApplicationLifecycleController? lifecycle;
 
     public App()
     {
@@ -37,24 +40,44 @@ public partial class App : System.Windows.Application
 
             var classifier = new EveWindowClassifier();
             var viewModel = new MainWindowViewModel(source, classifier);
-            WriteLog("Main window view model created.");
+            WriteLog("Settings window view model created.");
 
-            var mainWindow = new MainWindow(viewModel);
-            WriteLog("Main window created.");
+            var settingsWindow = new MainWindow(viewModel);
+            WriteLog("Settings window created.");
 
-            MainWindow = mainWindow;
-            mainWindow.Show();
-            WriteLog("Main window shown successfully.");
+            MainWindow = settingsWindow;
+            lifecycle = new ApplicationLifecycleController(
+                settingsWindow,
+                new FirstRunStateStore(),
+                exitCode => Shutdown(exitCode));
+
+            bool forceSettingsWindow = ShouldShowSettingsWindow(e.Args);
+            lifecycle.Start(forceSettingsWindow);
+
+            WriteLog(forceSettingsWindow
+                ? "Application started in tray mode with settings explicitly requested."
+                : "Application started in tray mode.");
         }
         catch (Exception exception)
         {
             ReportFatalStartupError(exception);
-            Shutdown(-1);
+
+            if (lifecycle is not null)
+            {
+                lifecycle.RequestExit(-1);
+            }
+            else
+            {
+                Shutdown(-1);
+            }
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        lifecycle?.Dispose();
+        lifecycle = null;
+
         WriteLog($"Application exit. Code: {e.ApplicationExitCode}.");
         base.OnExit(e);
     }
@@ -64,7 +87,15 @@ public partial class App : System.Windows.Application
         WriteLog("Unhandled dispatcher exception.", e.Exception);
         ShowError("EVE Command Center encountered an unexpected error.", e.Exception);
         e.Handled = true;
-        Shutdown(-2);
+
+        if (lifecycle is not null)
+        {
+            lifecycle.RequestExit(-2);
+        }
+        else
+        {
+            Shutdown(-2);
+        }
     }
 
     private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
@@ -76,6 +107,21 @@ public partial class App : System.Windows.Application
     {
         WriteLog("Unobserved task exception.", e.Exception);
         e.SetObserved();
+    }
+
+    private static bool ShouldShowSettingsWindow(IEnumerable<string> arguments)
+    {
+        foreach (string argument in arguments)
+        {
+            if (argument.Equals("--settings", StringComparison.OrdinalIgnoreCase) ||
+                argument.Equals("--show-settings", StringComparison.OrdinalIgnoreCase) ||
+                argument.Equals("/settings", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ReportFatalStartupError(Exception exception)
