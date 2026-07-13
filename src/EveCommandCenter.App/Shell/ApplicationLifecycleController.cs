@@ -19,6 +19,7 @@ public sealed class ApplicationLifecycleController : IDisposable
     public ApplicationLifecycleController(
         MainWindow settingsWindow,
         FirstRunStateStore firstRunStateStore,
+        Action togglePreviews,
         Action<int> shutdown)
     {
         this.settingsWindow = settingsWindow;
@@ -27,7 +28,7 @@ public sealed class ApplicationLifecycleController : IDisposable
 
         settingsWindow.Closing += OnSettingsWindowClosing;
         settingsWindow.Closed += OnSettingsWindowClosed;
-        trayIcon = new TrayIconService(ShowSettings, () => RequestExit(0));
+        trayIcon = new TrayIconService(ShowSettings, togglePreviews, () => RequestExit(0));
     }
 
     public void Start(bool forceSettingsWindow)
