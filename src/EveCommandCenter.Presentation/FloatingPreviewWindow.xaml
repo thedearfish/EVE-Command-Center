@@ -1,0 +1,68 @@
+<Window x:Class="EveCommandCenter.Presentation.FloatingPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:preview="clr-namespace:EveCommandCenter.Windows.Preview;assembly=EveCommandCenter.Windows"
+        Title="{Binding DisplayName}"
+        Width="320"
+        Height="210"
+        MinWidth="220"
+        MinHeight="140"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="#0B1117"
+        Foreground="#E6EDF3"
+        FontFamily="Segoe UI">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+  </Window.Resources>
+
+  <Border Background="#0B1117"
+          BorderBrush="#3A4A59"
+          BorderThickness="1">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Border x:Name="Header"
+              Padding="10,7"
+              Background="#111A22"
+              BorderBrush="#263544"
+              BorderThickness="0,0,0,1"
+              Visibility="{Binding ShowHeader, RelativeSource={RelativeSource AncestorType={x:Type Window}}, Converter={StaticResource BooleanToVisibilityConverter}}"
+              MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Right"
+                     Margin="12,0,0,0"
+                     VerticalAlignment="Center"
+                     Foreground="#55C2A2"
+                     FontSize="12"
+                     Text="● LIVE" />
+          <TextBlock VerticalAlignment="Center"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis"
+                     Text="{Binding DisplayName}" />
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Row="1"
+              Background="#05080C"
+              ClipToBounds="True"
+              Cursor="Hand"
+              MouseLeftButtonUp="OnPreviewMouseLeftButtonUp">
+        <Grid>
+          <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
+          <TextBlock Margin="12"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Foreground="#D96C75"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap"
+                     Text="{Binding RelativeSource={RelativeSource AncestorType={x:Type preview:DwmThumbnailHost}}, Path=ErrorText}" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
