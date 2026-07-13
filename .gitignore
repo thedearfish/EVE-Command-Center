@@ -1,0 +1,39 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# JetBrains
+.idea/
+*.DotSettings.user
+
+# VS Code
+.vscode/
+
+# Coverage
+coverage/
+coverage.cobertura.xml
+
+# Packages
+*.nupkg
+*.snupkg
+
+# Logs and local data
+*.log
+*.db
+*.db-shm
+*.db-wal
+settings.local.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

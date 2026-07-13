@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>EveCommandCenter.Windows</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\EveCommandCenter.Application\EveCommandCenter.Application.csproj" />
+    <ProjectReference Include="..\EveCommandCenter.Core\EveCommandCenter.Core.csproj" />
+  </ItemGroup>
+</Project>
