@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\EveCommandCenter.Application\EveCommandCenter.Application.csproj" />
     <ProjectReference Include="..\EveCommandCenter.Core\EveCommandCenter.Core.csproj" />
+    <ProjectReference Include="..\EveCommandCenter.Windows\EveCommandCenter.Windows.csproj" />
   </ItemGroup>
 </Project>
