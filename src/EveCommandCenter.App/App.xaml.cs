@@ -5,7 +5,9 @@ using System.Windows.Threading;
 using EveCommandCenter.App.Shell;
 using EveCommandCenter.App.Startup;
 using EveCommandCenter.Application.Discovery;
+using EveCommandCenter.Infrastructure.Settings;
 using EveCommandCenter.Presentation;
+using EveCommandCenter.Windows.Activation;
 using EveCommandCenter.Windows.Discovery;
 
 namespace EveCommandCenter.App;
@@ -14,7 +16,12 @@ public partial class App : System.Windows.Application
 {
     private static readonly object LogSync = new();
     private static readonly string LogPath = CreateLogPath();
+
     private ApplicationLifecycleController? lifecycle;
+    private FloatingPreviewManager? previewManager;
+    private GlobalHotkeyService? hotkeyService;
+    private MainWindowViewModel? viewModel;
+    private JsonSettingsStore<AppSettings>? settingsStore;
 
     public App()
     {
@@ -35,12 +42,29 @@ public partial class App : System.Windows.Application
             base.OnStartup(e);
             WriteLog("WPF base startup completed.");
 
-            var source = new Win32WindowSnapshotSource();
-            WriteLog("Window snapshot source created.");
+            settingsStore = new JsonSettingsStore<AppSettings>(AppDataPathProvider.GetSettingsPath());
+            AppSettings settings = LoadSettings();
 
+            var source = new Win32WindowSnapshotSource();
             var classifier = new EveWindowClassifier();
-            var viewModel = new MainWindowViewModel(source, classifier);
-            WriteLog("Settings window view model created.");
+            viewModel = new MainWindowViewModel(source, classifier, CreatePresentationSettings(settings));
+            viewModel.SettingsSaveRequested += OnSettingsSaveRequested;
+            WriteLog("Settings view model and EVE monitor created.");
+
+            var activationService = new Win32WindowActivationService();
+            previewManager = new FloatingPreviewManager(viewModel, activationService);
+
+            var navigation = new ClientNavigationController(
+                viewModel,
+                activationService,
+                new Win32ForegroundWindowSource());
+
+            hotkeyService = new GlobalHotkeyService(
+                () => _ = navigation.NextAsync(),
+                () => _ = navigation.PreviousAsync(),
+                previewManager.ToggleVisibility);
+
+            ApplyHotkeys(reportSuccess: false);
 
             var settingsWindow = new MainWindow(viewModel);
             WriteLog("Settings window created.");
@@ -49,6 +73,7 @@ public partial class App : System.Windows.Application
             lifecycle = new ApplicationLifecycleController(
                 settingsWindow,
                 new FirstRunStateStore(),
+                previewManager.ToggleVisibility,
                 exitCode => Shutdown(exitCode));
 
             bool forceSettingsWindow = ShouldShowSettingsWindow(e.Args);
@@ -75,12 +100,136 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (viewModel is not null)
+        {
+            viewModel.SettingsSaveRequested -= OnSettingsSaveRequested;
+            TrySaveSettings();
+        }
+
+        hotkeyService?.Dispose();
+        hotkeyService = null;
+
+        previewManager?.Dispose();
+        previewManager = null;
+
         lifecycle?.Dispose();
         lifecycle = null;
 
         WriteLog($"Application exit. Code: {e.ApplicationExitCode}.");
         base.OnExit(e);
     }
+
+    private void OnSettingsSaveRequested(object? sender, EventArgs e)
+    {
+        if (viewModel is null || settingsStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            AppSettings settings = CreatePersistedSettings(viewModel.CreateSettingsSnapshot());
+            settingsStore.SaveAsync(settings).GetAwaiter().GetResult();
+            ApplyHotkeys(reportSuccess: true);
+        }
+        catch (Exception exception)
+        {
+            WriteLog("Settings save failed.", exception);
+            viewModel.SetSettingsResult($"Could not save settings: {exception.Message}");
+        }
+    }
+
+    private AppSettings LoadSettings()
+    {
+        try
+        {
+            return settingsStore!.LoadAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            WriteLog("Settings load failed. Defaults will be used.", exception);
+            return new AppSettings();
+        }
+    }
+
+    private void ApplyHotkeys(bool reportSuccess)
+    {
+        if (viewModel is null || hotkeyService is null)
+        {
+            return;
+        }
+
+        string? error = hotkeyService.Apply(new HotkeyBindings(
+            viewModel.NextCharacterHotkey,
+            viewModel.PreviousCharacterHotkey,
+            viewModel.TogglePreviewsHotkey));
+
+        if (error is not null)
+        {
+            viewModel.SetSettingsResult($"Hotkey error: {error}");
+        }
+        else if (reportSuccess)
+        {
+            viewModel.SetSettingsResult("Settings saved and global hotkeys registered.");
+        }
+    }
+
+    private void TrySaveSettings()
+    {
+        if (viewModel is null || settingsStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            settingsStore
+                .SaveAsync(CreatePersistedSettings(viewModel.CreateSettingsSnapshot()))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception exception)
+        {
+            WriteLog("Settings save during shutdown failed.", exception);
+        }
+    }
+
+    private static SettingsSnapshot CreatePresentationSettings(AppSettings settings) =>
+        new(
+            settings.Preview.AutoCreate,
+            settings.Preview.AlwaysOnTop,
+            settings.Preview.ShowHeader,
+            Math.Clamp(settings.Preview.ThumbnailWidth, 220, 1920),
+            Math.Clamp(settings.Preview.ThumbnailHeight, 140, 1080),
+            Math.Clamp(settings.Preview.Opacity, 0.35, 1.0),
+            settings.Hotkeys.NextCharacter,
+            settings.Hotkeys.PreviousCharacter,
+            settings.Hotkeys.TogglePreviews);
+
+    private static AppSettings CreatePersistedSettings(SettingsSnapshot settings) =>
+        new()
+        {
+            General = new GeneralSettings
+            {
+                StartMinimized = true,
+                MinimizeToTray = true,
+            },
+            Preview = new PreviewSettings
+            {
+                AutoCreate = settings.AutoCreatePreviews,
+                AlwaysOnTop = settings.AlwaysOnTop,
+                ShowHeader = settings.ShowPreviewHeader,
+                ThumbnailWidth = settings.PreviewWidth,
+                ThumbnailHeight = settings.PreviewHeight,
+                Opacity = settings.PreviewOpacity,
+            },
+            Hotkeys = new HotkeySettings
+            {
+                NextCharacter = settings.NextCharacterHotkey,
+                PreviousCharacter = settings.PreviousCharacterHotkey,
+                TogglePreviews = settings.TogglePreviewsHotkey,
+            },
+        };
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
