@@ -38,6 +38,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<DetectedClientViewModel> Clients { get; } = [];
 
+    public IEnumerable<DetectedClientViewModel> PreviewClients => Clients.Where(client => client.IsPreviewEligible);
+
     public string StatusMessage
     {
         get => statusMessage;
@@ -59,7 +61,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             IReadOnlyList<WindowCandidate> windows = windowSnapshotSource.Capture();
-            List<DetectedClientViewModel> detected = [];
+            var seenWindowIds = new HashSet<long>();
 
             foreach (WindowCandidate window in windows)
             {
@@ -69,28 +71,50 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     continue;
                 }
 
+                long sourceWindowId = window.WindowId.Value;
+                seenWindowIds.Add(sourceWindowId);
                 bool isCharacter = classification.Kind == EveWindowKind.Character;
-                detected.Add(new DetectedClientViewModel(
-                    classification.DisplayName,
-                    isCharacter ? "Ready" : "Character Selection",
-                    window.ProcessId,
-                    $"0x{window.WindowId.Value:X}",
-                    window.Title,
-                    window.IsVisible,
-                    window.IsMinimized,
-                    window.IsResponsive,
-                    isCharacter && window.IsResponsive));
+                string state = isCharacter ? "Ready" : "Character Selection";
+
+                DetectedClientViewModel? existing = Clients.FirstOrDefault(client =>
+                    client.SourceWindowId == sourceWindowId);
+
+                if (existing is null)
+                {
+                    Clients.Add(new DetectedClientViewModel(
+                        sourceWindowId,
+                        classification.DisplayName,
+                        state,
+                        window.ProcessId,
+                        window.Title,
+                        window.IsVisible,
+                        window.IsMinimized,
+                        window.IsResponsive,
+                        isCharacter && window.IsResponsive));
+                }
+                else
+                {
+                    existing.Update(
+                        classification.DisplayName,
+                        state,
+                        window.ProcessId,
+                        window.Title,
+                        window.IsVisible,
+                        window.IsMinimized,
+                        window.IsResponsive,
+                        isCharacter && window.IsResponsive);
+                }
             }
 
-            detected.Sort((left, right) =>
-                StringComparer.OrdinalIgnoreCase.Compare(left.DisplayName, right.DisplayName));
-
-            Clients.Clear();
-            foreach (DetectedClientViewModel client in detected)
+            for (int index = Clients.Count - 1; index >= 0; index--)
             {
-                Clients.Add(client);
+                if (!seenWindowIds.Contains(Clients[index].SourceWindowId))
+                {
+                    Clients.RemoveAt(index);
+                }
             }
 
+            SortClients();
             lastScanAt = DateTimeOffset.Now;
             StatusMessage = $"Scanning every {timer.Interval.TotalMilliseconds:0} ms · " +
                             $"{ClientCount} EVE client(s) detected · Last scan {LastScanText}";
@@ -114,6 +138,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         timer.Tick -= OnTimerTick;
     }
 
+    private void SortClients()
+    {
+        List<DetectedClientViewModel> ordered = Clients
+            .OrderBy(client => client.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        for (int targetIndex = 0; targetIndex < ordered.Count; targetIndex++)
+        {
+            DetectedClientViewModel expected = ordered[targetIndex];
+            int currentIndex = Clients.IndexOf(expected);
+            if (currentIndex != targetIndex)
+            {
+                Clients.Move(currentIndex, targetIndex);
+            }
+        }
+    }
+
     private void OnTimerTick(object? sender, EventArgs e) => Refresh();
 
     private void NotifyCounters()
@@ -122,6 +163,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(CharacterCount));
         OnPropertyChanged(nameof(CharacterSelectionCount));
         OnPropertyChanged(nameof(LastScanText));
+        OnPropertyChanged(nameof(PreviewClients));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
