@@ -33,6 +33,26 @@ public sealed record PreviewSettings
     public int ThumbnailHeight { get; init; } = 180;
 
     public double Opacity { get; init; } = 1.0;
+
+    public IReadOnlyList<CharacterPreviewSettings> Characters { get; init; } =
+        Array.Empty<CharacterPreviewSettings>();
+}
+
+public sealed record CharacterPreviewSettings
+{
+    public string CharacterName { get; init; } = string.Empty;
+
+    public string CustomLabel { get; init; } = string.Empty;
+
+    public string ContentMode { get; init; } = "Standard";
+
+    public double? Left { get; init; }
+
+    public double? Top { get; init; }
+
+    public double? Width { get; init; }
+
+    public double? Height { get; init; }
 }
 
 public sealed record GeneralSettings
