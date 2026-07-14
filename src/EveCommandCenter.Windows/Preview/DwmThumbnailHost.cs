@@ -149,21 +149,13 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
                 return;
             }
 
-            DwmThumbnailSize sourceSize = session.GetSourceSize();
-            PreviewRectangle fitted = PreviewLayoutCalculator.Fit(
-                sourceSize.Width,
-                sourceSize.Height,
-                new PreviewRectangle(topLeft.X, topLeft.Y, availableWidth, availableHeight));
-
-            if (fitted.Width > 0 && fitted.Height > 0)
-            {
-                session.Update(new DwmThumbnailBounds(
-                    fitted.Left,
-                    fitted.Top,
-                    fitted.Width,
-                    fitted.Height));
-                SetError(string.Empty);
-            }
+            // Fill the complete host rectangle instead of letterboxing the source image.
+            session.Update(new DwmThumbnailBounds(
+                topLeft.X,
+                topLeft.Y,
+                availableWidth,
+                availableHeight));
+            SetError(string.Empty);
         }
         catch (Exception exception)
         {
