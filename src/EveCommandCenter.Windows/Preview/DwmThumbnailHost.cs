@@ -16,6 +16,12 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         typeof(DwmThumbnailHost),
         new FrameworkPropertyMetadata(0L, FrameworkPropertyMetadataOptions.AffectsRender, OnSourceWindowChanged));
 
+    public static readonly DependencyProperty ThumbnailOpacityProperty = DependencyProperty.Register(
+        nameof(ThumbnailOpacity),
+        typeof(double),
+        typeof(DwmThumbnailHost),
+        new PropertyMetadata(1.0, OnThumbnailOpacityChanged));
+
     public static readonly DependencyProperty ErrorTextProperty = DependencyProperty.Register(
         nameof(ErrorText),
         typeof(string),
@@ -39,6 +45,12 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         set => SetValue(SourceWindowIdProperty, value);
     }
 
+    public double ThumbnailOpacity
+    {
+        get => (double)GetValue(ThumbnailOpacityProperty);
+        set => SetValue(ThumbnailOpacityProperty, Math.Clamp(value, 0.0, 1.0));
+    }
+
     public string ErrorText
     {
         get => (string)GetValue(ErrorTextProperty);
@@ -59,11 +71,11 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         DisposeSession();
     }
 
-    private static void OnSourceWindowChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
-    {
-        var host = (DwmThumbnailHost)dependencyObject;
-        host.RecreateSession();
-    }
+    private static void OnSourceWindowChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args) =>
+        ((DwmThumbnailHost)dependencyObject).RecreateSession();
+
+    private static void OnThumbnailOpacityChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args) =>
+        ((DwmThumbnailHost)dependencyObject).UpdateThumbnail();
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -103,9 +115,7 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         }
         catch (Win32Exception exception)
         {
-            SetError(
-                $"DWM preview unavailable: 0x{exception.NativeErrorCode:X8}",
-                exception);
+            SetError($"DWM preview unavailable: 0x{exception.NativeErrorCode:X8}", exception);
             DisposeSession();
         }
         catch (Exception exception)
@@ -149,12 +159,14 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
                 return;
             }
 
-            // Fill the complete host rectangle instead of letterboxing the source image.
-            session.Update(new DwmThumbnailBounds(
-                topLeft.X,
-                topLeft.Y,
-                availableWidth,
-                availableHeight));
+            byte opacity = (byte)Math.Clamp(
+                (int)Math.Round(Math.Clamp(ThumbnailOpacity, 0.0, 1.0) * byte.MaxValue),
+                byte.MinValue,
+                byte.MaxValue);
+
+            session.Update(
+                new DwmThumbnailBounds(topLeft.X, topLeft.Y, availableWidth, availableHeight),
+                opacity);
             SetError(string.Empty);
         }
         catch (Exception exception)
@@ -175,16 +187,11 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
 
         if (!string.IsNullOrWhiteSpace(message))
         {
-            AppLog.Warning(
-                "DWM",
-                $"{message} Source HWND=0x{SourceWindowId:X}.",
-                exception);
+            AppLog.Warning("DWM", $"{message} Source HWND=0x{SourceWindowId:X}.", exception);
         }
         else if (!string.IsNullOrWhiteSpace(previous))
         {
-            AppLog.Information(
-                "DWM",
-                $"Thumbnail rendering recovered for source HWND=0x{SourceWindowId:X}.");
+            AppLog.Information("DWM", $"Thumbnail rendering recovered for source HWND=0x{SourceWindowId:X}.");
         }
     }
 
@@ -192,9 +199,7 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
     {
         if (session is not null)
         {
-            AppLog.Information(
-                "DWM",
-                $"Thumbnail unregistered for source HWND=0x{SourceWindowId:X}.");
+            AppLog.Information("DWM", $"Thumbnail unregistered for source HWND=0x{SourceWindowId:X}.");
             session.Dispose();
             session = null;
         }
