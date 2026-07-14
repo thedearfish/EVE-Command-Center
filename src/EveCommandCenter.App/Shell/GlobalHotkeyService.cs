@@ -73,6 +73,9 @@ public sealed class GlobalHotkeyService : IDisposable
                 () => activateCharacter(characterName)));
         }
 
+        var errors = new List<string>();
+        var configuredCombinations = new Dictionary<(uint Modifiers, uint Key), string>();
+
         foreach (RequestedHotkey hotkey in requested)
         {
             if (string.IsNullOrWhiteSpace(hotkey.Value))
@@ -82,18 +85,29 @@ public sealed class GlobalHotkeyService : IDisposable
 
             if (!TryParse(hotkey.Value, out uint modifiers, out uint virtualKey, out string? error))
             {
-                RollBackRegistrations();
                 string message = $"{hotkey.Name}: {error}";
+                errors.Add(message);
                 AppLog.Warning("Hotkeys", $"Could not parse hotkey '{hotkey.Value}': {message}");
-                return message;
+                continue;
             }
+
+            var combination = (modifiers, virtualKey);
+            if (configuredCombinations.TryGetValue(combination, out string? existingName))
+            {
+                string message = $"{hotkey.Name}: '{hotkey.Value}' is already assigned to {existingName}.";
+                errors.Add(message);
+                AppLog.Warning("Hotkeys", message);
+                continue;
+            }
+
+            configuredCombinations[combination] = hotkey.Name;
 
             if (!RegisterHotKey(messageWindow.Handle, hotkey.Id, modifiers | ModNoRepeat, virtualKey))
             {
-                RollBackRegistrations();
-                string message = $"{hotkey.Name}: the hotkey '{hotkey.Value}' is unavailable or already used.";
+                string message = $"{hotkey.Name}: the hotkey '{hotkey.Value}' is unavailable or used by another application.";
+                errors.Add(message);
                 AppLog.Warning("Hotkeys", message);
-                return message;
+                continue;
             }
 
             registeredIds.Add(hotkey.Id);
@@ -101,7 +115,11 @@ public sealed class GlobalHotkeyService : IDisposable
             AppLog.Information("Hotkeys", $"Registered {hotkey.Name}: {hotkey.Value}.");
         }
 
-        return null;
+        AppLog.Information(
+            "Hotkeys",
+            $"Hotkey registration completed; registered={registeredIds.Count}; errors={errors.Count}.");
+
+        return errors.Count == 0 ? null : string.Join(" | ", errors);
     }
 
     public void Dispose()
@@ -141,12 +159,6 @@ public sealed class GlobalHotkeyService : IDisposable
         {
             AppLog.SetCurrentOperation("idle");
         }
-    }
-
-    private void RollBackRegistrations()
-    {
-        UnregisterAll();
-        actions.Clear();
     }
 
     private void UnregisterAll()
@@ -221,10 +233,22 @@ public sealed class GlobalHotkeyService : IDisposable
         return true;
     }
 
-    private static string NormalizeKeyName(string keyName) =>
-        keyName.Length == 1 && char.IsDigit(keyName[0])
-            ? $"D{keyName}"
-            : keyName;
+    private static string NormalizeKeyName(string keyName)
+    {
+        if (keyName.Length == 1 && char.IsDigit(keyName[0]))
+        {
+            return $"D{keyName}";
+        }
+
+        return keyName.ToUpperInvariant() switch
+        {
+            "ESC" => "Escape",
+            "DEL" => "Delete",
+            "PGUP" => "PageUp",
+            "PGDN" => "PageDown",
+            _ => keyName,
+        };
+    }
 
     private static bool IsModifierKey(Forms.Keys key) =>
         key is Forms.Keys.ControlKey
