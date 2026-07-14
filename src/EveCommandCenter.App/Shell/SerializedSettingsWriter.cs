@@ -29,7 +29,10 @@ public sealed class SerializedSettingsWriter : IDisposable
         try
         {
             AppLog.Information("Settings", $"Settings save started. Reason: {reason}.");
-            await store.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+            await Task.Run(
+                    () => store.SaveAsync(settings, cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
             stopwatch.Stop();
             AppLog.Information(
                 "Settings",
