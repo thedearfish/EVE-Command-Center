@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using EveCommandCenter.Infrastructure.Settings;
 
 namespace EveCommandCenter.App.Startup;
 
@@ -9,7 +10,7 @@ public sealed class FirstRunStateStore
     private readonly string statePath;
 
     public FirstRunStateStore()
-        : this(CreateDefaultStatePath())
+        : this(AppDataPathProvider.GetFirstRunStatePath())
     {
     }
 
@@ -33,7 +34,6 @@ public sealed class FirstRunStateStore
         }
         catch
         {
-            // A missing or damaged state file must never prevent the setup window from opening.
             return true;
         }
     }
@@ -55,12 +55,6 @@ public sealed class FirstRunStateStore
         string temporaryPath = statePath + ".tmp";
         File.WriteAllText(temporaryPath, json);
         File.Move(temporaryPath, statePath, true);
-    }
-
-    private static string CreateDefaultStatePath()
-    {
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "EVE Command Center", "app-state.json");
     }
 
     private sealed record PersistedState(int SchemaVersion, bool FirstRunCompleted);
