@@ -14,20 +14,50 @@ public sealed class JsonSettingsStore<T>(
             PropertyNameCaseInsensitive = true,
         };
 
+    private readonly SemaphoreSlim ioGate = new(1, 1);
+
     public async Task<T> LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(filePath))
+        await ioGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
+            string temporaryPath = filePath + ".tmp";
+
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    T settings = await DeserializeAsync(filePath, cancellationToken).ConfigureAwait(false);
+                    TryDelete(temporaryPath);
+                    return settings;
+                }
+                catch (Exception exception) when (
+                    exception is JsonException or IOException or UnauthorizedAccessException)
+                {
+                    if (!File.Exists(temporaryPath))
+                    {
+                        throw;
+                    }
+
+                    T recovered = await DeserializeAsync(temporaryPath, cancellationToken).ConfigureAwait(false);
+                    File.Move(temporaryPath, filePath, overwrite: true);
+                    return recovered;
+                }
+            }
+
+            if (File.Exists(temporaryPath))
+            {
+                T recovered = await DeserializeAsync(temporaryPath, cancellationToken).ConfigureAwait(false);
+                File.Move(temporaryPath, filePath, overwrite: true);
+                return recovered;
+            }
+
             return new T();
         }
-
-        await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<T>(
-                stream,
-                _serializerOptions,
-                cancellationToken)
-            .ConfigureAwait(false)
-            ?? new T();
+        finally
+        {
+            ioGate.Release();
+        }
     }
 
     public async Task SaveAsync(
@@ -36,24 +66,72 @@ public sealed class JsonSettingsStore<T>(
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrWhiteSpace(directory))
+        await ioGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Directory.CreateDirectory(directory);
+            string? directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            string temporaryPath = filePath + ".tmp";
+
+            await using (var stream = new FileStream(
+                             temporaryPath,
+                             FileMode.Create,
+                             FileAccess.Write,
+                             FileShare.None,
+                             bufferSize: 16 * 1024,
+                             useAsync: true))
+            {
+                await JsonSerializer.SerializeAsync(
+                        stream,
+                        settings,
+                        _serializerOptions,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            File.Move(temporaryPath, filePath, overwrite: true);
         }
-
-        var temporaryPath = filePath + ".tmp";
-
-        await using (var stream = File.Create(temporaryPath))
+        finally
         {
-            await JsonSerializer.SerializeAsync(
-                    stream,
-                    settings,
-                    _serializerOptions,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            ioGate.Release();
         }
+    }
 
-        File.Move(temporaryPath, filePath, overwrite: true);
+    private async Task<T> DeserializeAsync(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 16 * 1024,
+            useAsync: true);
+
+        return await JsonSerializer.DeserializeAsync<T>(
+                stream,
+                _serializerOptions,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? new T();
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // A stale temporary file can be retried on the next load/save.
+        }
     }
 }
