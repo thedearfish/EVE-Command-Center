@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using EveCommandCenter.Application.Diagnostics;
 using Forms = System.Windows.Forms;
 
 namespace EveCommandCenter.App.Shell;
@@ -18,7 +19,7 @@ public sealed class GlobalHotkeyService : IDisposable
     private const uint ModNoRepeat = 0x4000;
 
     private readonly HotkeyMessageWindow messageWindow;
-    private readonly Dictionary<int, Action> actions = [];
+    private readonly Dictionary<int, HotkeyAction> actions = [];
     private bool disposed;
 
     public GlobalHotkeyService(
@@ -27,9 +28,10 @@ public sealed class GlobalHotkeyService : IDisposable
         Action togglePreviews)
     {
         messageWindow = new HotkeyMessageWindow(OnHotkeyPressed);
-        actions[1] = nextCharacter;
-        actions[2] = previousCharacter;
-        actions[3] = togglePreviews;
+        actions[1] = new HotkeyAction("Next character", nextCharacter);
+        actions[2] = new HotkeyAction("Previous character", previousCharacter);
+        actions[3] = new HotkeyAction("Show / hide previews", togglePreviews);
+        AppLog.Information("Hotkeys", "Global hotkey service initialized.");
     }
 
     public string? Apply(HotkeyBindings bindings)
@@ -48,14 +50,20 @@ public sealed class GlobalHotkeyService : IDisposable
             if (!TryParse(hotkey.Value, out uint modifiers, out uint virtualKey, out string? error))
             {
                 UnregisterAll();
-                return $"{hotkey.Name}: {error}";
+                string message = $"{hotkey.Name}: {error}";
+                AppLog.Warning("Hotkeys", $"Could not parse hotkey '{hotkey.Value}': {message}");
+                return message;
             }
 
             if (!RegisterHotKey(messageWindow.Handle, hotkey.Id, modifiers | ModNoRepeat, virtualKey))
             {
                 UnregisterAll();
-                return $"{hotkey.Name}: the combination '{hotkey.Value}' is unavailable or already used.";
+                string message = $"{hotkey.Name}: the combination '{hotkey.Value}' is unavailable or already used.";
+                AppLog.Warning("Hotkeys", message);
+                return message;
             }
+
+            AppLog.Information("Hotkeys", $"Registered {hotkey.Name}: {hotkey.Value}.");
         }
 
         return null;
@@ -71,13 +79,32 @@ public sealed class GlobalHotkeyService : IDisposable
         disposed = true;
         UnregisterAll();
         messageWindow.Dispose();
+        AppLog.Information("Hotkeys", "Global hotkey service disposed.");
     }
 
     private void OnHotkeyPressed(int id)
     {
-        if (actions.TryGetValue(id, out Action? action))
+        if (!actions.TryGetValue(id, out HotkeyAction? hotkey))
         {
-            action();
+            AppLog.Warning("Hotkeys", $"Received unknown hotkey id {id}.");
+            return;
+        }
+
+        AppLog.SetCurrentOperation($"hotkey: {hotkey.Name}");
+        AppLog.Information("Hotkeys", $"Global hotkey pressed: {hotkey.Name}.");
+
+        try
+        {
+            hotkey.Action();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Hotkeys", $"Global hotkey action failed: {hotkey.Name}.", exception);
+            throw;
+        }
+        finally
+        {
+            AppLog.SetCurrentOperation("idle");
         }
     }
 
@@ -187,4 +214,6 @@ public sealed class GlobalHotkeyService : IDisposable
             }
         }
     }
+
+    private sealed record HotkeyAction(string Name, Action Action);
 }
