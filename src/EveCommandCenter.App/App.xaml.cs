@@ -49,6 +49,7 @@ public partial class App : System.Windows.Application
             var classifier = new EveWindowClassifier();
             viewModel = new MainWindowViewModel(source, classifier, CreatePresentationSettings(settings));
             viewModel.SettingsSaveRequested += OnSettingsSaveRequested;
+            viewModel.SettingsPersistRequested += OnSettingsPersistRequested;
             WriteLog("Settings view model and EVE monitor created.");
 
             var activationService = new Win32WindowActivationService();
@@ -103,6 +104,7 @@ public partial class App : System.Windows.Application
         if (viewModel is not null)
         {
             viewModel.SettingsSaveRequested -= OnSettingsSaveRequested;
+            viewModel.SettingsPersistRequested -= OnSettingsPersistRequested;
             TrySaveSettings();
         }
 
@@ -138,6 +140,8 @@ public partial class App : System.Windows.Application
             viewModel.SetSettingsResult($"Could not save settings: {exception.Message}");
         }
     }
+
+    private void OnSettingsPersistRequested(object? sender, EventArgs e) => TrySaveSettings();
 
     private AppSettings LoadSettings()
     {
@@ -190,7 +194,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception exception)
         {
-            WriteLog("Settings save during shutdown failed.", exception);
+            WriteLog("Automatic settings save failed.", exception);
         }
     }
 
@@ -204,7 +208,23 @@ public partial class App : System.Windows.Application
             Math.Clamp(settings.Preview.Opacity, 0.35, 1.0),
             settings.Hotkeys.NextCharacter,
             settings.Hotkeys.PreviousCharacter,
-            settings.Hotkeys.TogglePreviews);
+            settings.Hotkeys.TogglePreviews,
+            (settings.Preview.Characters ?? Array.Empty<CharacterPreviewSettings>())
+                .Where(character => !string.IsNullOrWhiteSpace(character.CharacterName))
+                .Select(character => new CharacterPreviewProfileSnapshot(
+                    character.CharacterName,
+                    character.CustomLabel,
+                    ParseContentMode(character.ContentMode),
+                    character.Left,
+                    character.Top,
+                    character.Width,
+                    character.Height))
+                .ToArray());
+
+    private static PreviewContentMode ParseContentMode(string? value) =>
+        Enum.TryParse(value, ignoreCase: true, out PreviewContentMode mode)
+            ? mode
+            : PreviewContentMode.Standard;
 
     private static AppSettings CreatePersistedSettings(SettingsSnapshot settings) =>
         new()
@@ -222,6 +242,18 @@ public partial class App : System.Windows.Application
                 ThumbnailWidth = settings.PreviewWidth,
                 ThumbnailHeight = settings.PreviewHeight,
                 Opacity = settings.PreviewOpacity,
+                Characters = settings.CharacterProfiles
+                    .Select(character => new CharacterPreviewSettings
+                    {
+                        CharacterName = character.CharacterName,
+                        CustomLabel = character.CustomLabel,
+                        ContentMode = character.ContentMode.ToString(),
+                        Left = character.Left,
+                        Top = character.Top,
+                        Width = character.Width,
+                        Height = character.Height,
+                    })
+                    .ToArray(),
             },
             Hotkeys = new HotkeySettings
             {
