@@ -67,7 +67,7 @@ public sealed class UiDispatcherWatchdog : IDisposable
                     return;
                 }
 
-                var acknowledgement = new TaskCompletionSource(
+                var acknowledgement = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 long startedAt = Stopwatch.GetTimestamp();
 
@@ -75,7 +75,7 @@ public sealed class UiDispatcherWatchdog : IDisposable
                 {
                     _ = dispatcher.BeginInvoke(
                         DispatcherPriority.Send,
-                        new Action(() => acknowledgement.TrySetResult()));
+                        new Action(() => acknowledgement.TrySetResult(true)));
                 }
                 catch (InvalidOperationException)
                 {
