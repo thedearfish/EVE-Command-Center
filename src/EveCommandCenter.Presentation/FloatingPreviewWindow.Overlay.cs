@@ -22,6 +22,7 @@ public partial class FloatingPreviewWindow
     private FloatingPreviewOverlayWindow? textOverlay;
     private bool overlaySyncQueued;
     private bool overlayCloseHooked;
+    private bool overlaySizeHooked;
 
     private void OnPreviewWindowLoaded(object sender, RoutedEventArgs e)
     {
@@ -33,6 +34,15 @@ public partial class FloatingPreviewWindow
         {
             overlayCloseHooked = true;
             Closed += OnPreviewOwnerClosed;
+        }
+
+        if (!overlaySizeHooked)
+        {
+            overlaySizeHooked = true;
+            AddHandler(
+                FrameworkElement.SizeChangedEvent,
+                new SizeChangedEventHandler(OnPreviewWindowSizeChanged),
+                handledEventsToo: true);
         }
     }
 
@@ -115,6 +125,14 @@ public partial class FloatingPreviewWindow
     {
         Closed -= OnPreviewOwnerClosed;
         overlayCloseHooked = false;
+
+        if (overlaySizeHooked)
+        {
+            RemoveHandler(
+                FrameworkElement.SizeChangedEvent,
+                new SizeChangedEventHandler(OnPreviewWindowSizeChanged));
+            overlaySizeHooked = false;
+        }
 
         FloatingPreviewOverlayWindow? overlay = textOverlay;
         textOverlay = null;
