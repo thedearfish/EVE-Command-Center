@@ -78,7 +78,8 @@ public partial class App : System.Windows.Application
             hotkeyService = new GlobalHotkeyService(
                 () => _ = navigation.NextAsync(),
                 () => _ = navigation.PreviousAsync(),
-                previewManager.ToggleVisibility);
+                previewManager.ToggleVisibility,
+                characterName => _ = navigation.ActivateCharacterAsync(characterName));
 
             ApplyHotkeys(reportSuccess: false);
 
@@ -133,6 +134,9 @@ public partial class App : System.Windows.Application
         previewManager = null;
 
         SaveFinalSettings();
+
+        viewModel?.Dispose();
+        viewModel = null;
 
         hotkeyService?.Dispose();
         hotkeyService = null;
@@ -211,10 +215,19 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        string? error = hotkeyService.Apply(new HotkeyBindings(
-            viewModel.NextCharacterHotkey,
-            viewModel.PreviousCharacterHotkey,
-            viewModel.TogglePreviewsHotkey));
+        CharacterHotkeyBinding[] characterBindings = viewModel.CharacterProfiles
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.ActivationHotkey))
+            .Select(profile => new CharacterHotkeyBinding(
+                profile.CharacterName,
+                profile.ActivationHotkey))
+            .ToArray();
+
+        string? error = hotkeyService.Apply(
+            new HotkeyBindings(
+                viewModel.NextCharacterHotkey,
+                viewModel.PreviousCharacterHotkey,
+                viewModel.TogglePreviewsHotkey),
+            characterBindings);
 
         if (error is not null)
         {
@@ -222,7 +235,7 @@ public partial class App : System.Windows.Application
         }
         else if (reportSuccess)
         {
-            viewModel.SetSettingsResult("Settings saved and global hotkeys registered.");
+            viewModel.SetSettingsResult("Settings saved and all global hotkeys registered.");
         }
     }
 
@@ -270,6 +283,7 @@ public partial class App : System.Windows.Application
                     character.CharacterName,
                     character.CustomLabel,
                     ParseContentMode(character.ContentMode),
+                    character.ActivationHotkey,
                     character.Left,
                     character.Top,
                     character.Width,
@@ -303,6 +317,7 @@ public partial class App : System.Windows.Application
                         CharacterName = character.CharacterName,
                         CustomLabel = character.CustomLabel,
                         ContentMode = character.ContentMode.ToString(),
+                        ActivationHotkey = character.ActivationHotkey,
                         Left = character.Left,
                         Top = character.Top,
                         Width = character.Width,
@@ -398,7 +413,6 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            // Logging is the final fallback if WPF cannot display a dialog.
         }
     }
 
@@ -406,8 +420,7 @@ public partial class App : System.Windows.Application
     {
         string[] candidateDirectories =
         [
-            Path.Combine(AppContext.BaseDirectory, "logs"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EVE Command Center", "logs"),
+            AppDataPathProvider.GetLogsDirectory(),
             Path.Combine(Path.GetTempPath(), "EVE Command Center", "logs"),
         ];
 
@@ -420,7 +433,6 @@ public partial class App : System.Windows.Application
             }
             catch
             {
-                // Try the next writable location.
             }
         }
 
@@ -450,7 +462,6 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            // Startup diagnostics must never cause a secondary crash.
         }
     }
 }
