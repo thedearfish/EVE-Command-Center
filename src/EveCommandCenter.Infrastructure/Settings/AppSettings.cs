@@ -46,6 +46,8 @@ public sealed record CharacterPreviewSettings
 
     public string ContentMode { get; init; } = "Standard";
 
+    public string ActivationHotkey { get; init; } = string.Empty;
+
     public double? Left { get; init; }
 
     public double? Top { get; init; }
