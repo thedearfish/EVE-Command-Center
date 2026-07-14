@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using EveCommandCenter.Application.Diagnostics;
+using EveCommandCenter.Infrastructure.Settings;
 
 namespace EveCommandCenter.App.Diagnostics;
 
@@ -15,8 +16,7 @@ public sealed class FileRuntimeLogger : IAppLogger
 
     public FileRuntimeLogger()
     {
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string directory = Path.Combine(localAppData, "EVE Command Center", "logs");
+        string directory = AppDataPathProvider.GetLogsDirectory();
         Directory.CreateDirectory(directory);
 
         LogFilePath = Path.Combine(directory, "runtime.log");
@@ -128,7 +128,6 @@ public sealed class FileRuntimeLogger : IAppLogger
         }
         catch
         {
-            // Failure to rotate must not prevent future logging attempts.
         }
     }
 
@@ -140,7 +139,6 @@ public sealed class FileRuntimeLogger : IAppLogger
         }
         catch
         {
-            // Logging is a best-effort diagnostic facility.
         }
     }
 }
