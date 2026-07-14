@@ -14,6 +14,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private readonly IWindowSnapshotSource windowSnapshotSource;
     private readonly EveWindowClassifier classifier;
+    private readonly EveGameLogLocationReader locationReader = new();
     private readonly DispatcherTimer timer;
     private string statusMessage = "Starting EVE client monitoring...";
     private bool autoCreatePreviews;
@@ -84,15 +85,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         new(
             PreviewContentMode.Standard,
             "Standard",
-            "Live DWM image with character name and optional custom label."),
+            "Live DWM image with character name, solar system and optional custom label."),
         new(
             PreviewContentMode.ImageOnly,
             "Image only",
-            "Live DWM image without a header."),
+            "Live DWM image without text."),
         new(
             PreviewContentMode.TextOnly,
             "Name only (low load)",
-            "No DWM thumbnail. Shows the character name and optional custom label on a compact gray tile."),
+            "No DWM thumbnail. Shows the character name, solar system and optional custom label on a compact gray tile."),
     ];
 
     public IEnumerable<DetectedClientViewModel> PreviewClients => Clients.Where(client => client.IsPreviewEligible);
@@ -228,7 +229,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         profile.UpdateLayout(left, top, width, height);
     }
 
-    public void Refresh() => ApplyRefresh(CaptureClassifiedWindows());
+    public void Refresh() => ApplyRefresh(CaptureRefreshData());
 
     public void Dispose()
     {
@@ -257,10 +258,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         refreshInProgress = true;
         try
         {
-            ClassifiedWindow[] detected = await Task.Run(CaptureClassifiedWindows);
+            RefreshCapture capture = await Task.Run(CaptureRefreshData);
             if (!disposed)
             {
-                ApplyRefresh(detected);
+                ApplyRefresh(capture);
             }
         }
         catch (Exception exception)
@@ -274,6 +275,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private RefreshCapture CaptureRefreshData() =>
+        new(CaptureClassifiedWindows(), locationReader.Capture());
+
     private ClassifiedWindow[] CaptureClassifiedWindows() =>
         windowSnapshotSource
             .Capture()
@@ -281,14 +285,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             .Where(item => item.Classification.Kind != EveWindowKind.NotEve)
             .ToArray();
 
-    private void ApplyRefresh(IReadOnlyList<ClassifiedWindow> detectedWindows)
+    private void ApplyRefresh(RefreshCapture capture)
     {
         try
         {
             var seenWindowIds = new HashSet<long>();
             var detectedCharacterNames = new HashSet<string>(CharacterNameComparer);
 
-            foreach (ClassifiedWindow item in detectedWindows)
+            foreach (ClassifiedWindow item in capture.Windows)
             {
                 WindowCandidate window = item.Window;
                 EveWindowClassification classification = item.Classification;
@@ -296,6 +300,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 seenWindowIds.Add(sourceWindowId);
                 bool isCharacter = classification.Kind == EveWindowKind.Character;
                 string state = isCharacter ? "Ready" : "Character Selection";
+                string currentSystem = isCharacter &&
+                                       capture.Locations.TryGetValue(classification.DisplayName, out string? system)
+                    ? system
+                    : string.Empty;
 
                 if (isCharacter)
                 {
@@ -311,6 +319,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     Clients.Add(new DetectedClientViewModel(
                         sourceWindowId,
                         classification.DisplayName,
+                        currentSystem,
                         state,
                         window.ProcessId,
                         window.Title,
@@ -323,6 +332,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 {
                     existing.Update(
                         classification.DisplayName,
+                        currentSystem,
                         state,
                         window.ProcessId,
                         window.Title,
@@ -443,4 +453,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private sealed record ClassifiedWindow(
         WindowCandidate Window,
         EveWindowClassification Classification);
+
+    private sealed record RefreshCapture(
+        IReadOnlyList<ClassifiedWindow> Windows,
+        IReadOnlyDictionary<string, string> Locations);
 }
