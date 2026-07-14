@@ -20,12 +20,18 @@ public partial class FloatingPreviewWindow
     private const uint SwpFrameChanged = 0x0020;
 
     private FloatingPreviewOverlayWindow? textOverlay;
-    private bool overlaySyncQueued;
+    private DispatcherOperation? overlaySyncOperation;
     private bool overlayCloseHooked;
     private bool overlaySizeHooked;
+    private bool overlayOwnerClosed;
 
     private void OnPreviewWindowLoaded(object sender, RoutedEventArgs e)
     {
+        if (overlayOwnerClosed)
+        {
+            return;
+        }
+
         SuppressNativeWindowFrame();
         EnsureTextOverlay();
         QueueOverlaySync();
@@ -55,43 +61,85 @@ public partial class FloatingPreviewWindow
 
     private void OnPreviewWindowStateChanged(object? sender, EventArgs e) => QueueOverlaySync();
 
-    private void EnsureTextOverlay()
+    private bool EnsureTextOverlay()
     {
-        if (textOverlay is not null)
+        if (overlayOwnerClosed || !IsLoaded)
         {
-            return;
+            return false;
         }
 
-        textOverlay = new FloatingPreviewOverlayWindow(this, DataContext);
-        BindingOperations.SetBinding(
-            textOverlay,
-            TopmostProperty,
-            new Binding(nameof(Topmost)) { Source = this, Mode = BindingMode.OneWay });
-        textOverlay.Show();
-        AppLog.Information("PreviewOverlay", $"Text overlay created for {client.DisplayName}.");
+        if (textOverlay is not null)
+        {
+            return true;
+        }
+
+        nint ownerHandle = new WindowInteropHelper(this).Handle;
+        if (ownerHandle == nint.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            textOverlay = new FloatingPreviewOverlayWindow(this, DataContext);
+            BindingOperations.SetBinding(
+                textOverlay,
+                TopmostProperty,
+                new Binding(nameof(Topmost)) { Source = this, Mode = BindingMode.OneWay });
+            textOverlay.Show();
+            AppLog.Information("PreviewOverlay", $"Text overlay created for {client.DisplayName}.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            textOverlay = null;
+            AppLog.Warning(
+                "PreviewOverlay",
+                $"Could not create text overlay for {client.DisplayName}.",
+                exception);
+            return false;
+        }
     }
 
     private void QueueOverlaySync()
     {
-        if (overlaySyncQueued || !IsLoaded)
+        if (overlayOwnerClosed || !IsLoaded)
         {
             return;
         }
 
-        overlaySyncQueued = true;
-        _ = Dispatcher.BeginInvoke(
+        if (overlaySyncOperation is { Status: DispatcherOperationStatus.Pending })
+        {
+            return;
+        }
+
+        overlaySyncOperation = Dispatcher.BeginInvoke(
             DispatcherPriority.Render,
             new Action(() =>
             {
-                overlaySyncQueued = false;
-                SynchronizeTextOverlay();
+                overlaySyncOperation = null;
+                if (overlayOwnerClosed || !IsLoaded)
+                {
+                    return;
+                }
+
+                try
+                {
+                    SynchronizeTextOverlay();
+                }
+                catch (Exception exception)
+                {
+                    AppLog.Warning(
+                        "PreviewOverlay",
+                        $"Queued overlay synchronization failed for {client.DisplayName}.",
+                        exception);
+                }
             }));
     }
 
     private void SynchronizeTextOverlay()
     {
-        EnsureTextOverlay();
-        if (textOverlay is null)
+        if (overlayOwnerClosed || !IsLoaded || !EnsureTextOverlay() || textOverlay is null)
         {
             return;
         }
@@ -123,6 +171,8 @@ public partial class FloatingPreviewWindow
 
     private void OnPreviewOwnerClosed(object? sender, EventArgs e)
     {
+        overlayOwnerClosed = true;
+
         Closed -= OnPreviewOwnerClosed;
         overlayCloseHooked = false;
 
@@ -134,12 +184,29 @@ public partial class FloatingPreviewWindow
             overlaySizeHooked = false;
         }
 
+        if (overlaySyncOperation is { Status: DispatcherOperationStatus.Pending })
+        {
+            _ = overlaySyncOperation.Abort();
+        }
+
+        overlaySyncOperation = null;
+
         FloatingPreviewOverlayWindow? overlay = textOverlay;
         textOverlay = null;
         if (overlay is not null)
         {
-            overlay.Close();
-            AppLog.Information("PreviewOverlay", $"Text overlay closed for {client.DisplayName}.");
+            try
+            {
+                overlay.Close();
+                AppLog.Information("PreviewOverlay", $"Text overlay closed for {client.DisplayName}.");
+            }
+            catch (Exception exception)
+            {
+                AppLog.Warning(
+                    "PreviewOverlay",
+                    $"Could not close text overlay for {client.DisplayName}.",
+                    exception);
+            }
         }
     }
 
