@@ -36,10 +36,6 @@ public static class NativeWindowOpacityBehavior
             return;
         }
 
-        // WPF Opacity does not reliably include DWM thumbnails. Keep WPF fully opaque
-        // and apply alpha to the complete native destination HWND instead.
-        window.Opacity = 1.0;
-
         if (!(bool)window.GetValue(IsHookedProperty))
         {
             window.SetValue(IsHookedProperty, true);
