@@ -9,6 +9,10 @@ public sealed record HotkeyBindings(
     string PreviousCharacter,
     string TogglePreviews);
 
+public sealed record CharacterHotkeyBinding(
+    string CharacterName,
+    string Hotkey);
+
 public sealed class GlobalHotkeyService : IDisposable
 {
     private const int WmHotkey = 0x0312;
@@ -17,39 +21,68 @@ public sealed class GlobalHotkeyService : IDisposable
     private const uint ModShift = 0x0004;
     private const uint ModWin = 0x0008;
     private const uint ModNoRepeat = 0x4000;
+    private const int FirstCharacterHotkeyId = 100;
 
     private readonly HotkeyMessageWindow messageWindow;
+    private readonly Action nextCharacter;
+    private readonly Action previousCharacter;
+    private readonly Action togglePreviews;
+    private readonly Action<string> activateCharacter;
     private readonly Dictionary<int, HotkeyAction> actions = [];
+    private readonly HashSet<int> registeredIds = [];
     private bool disposed;
 
     public GlobalHotkeyService(
         Action nextCharacter,
         Action previousCharacter,
-        Action togglePreviews)
+        Action togglePreviews,
+        Action<string> activateCharacter)
     {
+        this.nextCharacter = nextCharacter;
+        this.previousCharacter = previousCharacter;
+        this.togglePreviews = togglePreviews;
+        this.activateCharacter = activateCharacter;
         messageWindow = new HotkeyMessageWindow(OnHotkeyPressed);
-        actions[1] = new HotkeyAction("Next character", nextCharacter);
-        actions[2] = new HotkeyAction("Previous character", previousCharacter);
-        actions[3] = new HotkeyAction("Show / hide previews", togglePreviews);
         AppLog.Information("Hotkeys", "Global hotkey service initialized.");
     }
 
-    public string? Apply(HotkeyBindings bindings)
+    public string? Apply(
+        HotkeyBindings bindings,
+        IReadOnlyList<CharacterHotkeyBinding> characterBindings)
     {
         UnregisterAll();
+        actions.Clear();
 
-        var requested = new[]
+        var requested = new List<RequestedHotkey>
         {
-            (Id: 1, Name: "Next character", Value: bindings.NextCharacter),
-            (Id: 2, Name: "Previous character", Value: bindings.PreviousCharacter),
-            (Id: 3, Name: "Show / hide previews", Value: bindings.TogglePreviews),
+            new(1, "Next character", bindings.NextCharacter, nextCharacter),
+            new(2, "Previous character", bindings.PreviousCharacter, previousCharacter),
+            new(3, "Show / hide previews", bindings.TogglePreviews, togglePreviews),
         };
 
-        foreach (var hotkey in requested)
+        int nextId = FirstCharacterHotkeyId;
+        foreach (CharacterHotkeyBinding binding in characterBindings
+                     .Where(binding => !string.IsNullOrWhiteSpace(binding.CharacterName))
+                     .OrderBy(binding => binding.CharacterName, StringComparer.OrdinalIgnoreCase))
         {
+            string characterName = binding.CharacterName.Trim();
+            requested.Add(new RequestedHotkey(
+                nextId++,
+                $"Activate {characterName}",
+                binding.Hotkey,
+                () => activateCharacter(characterName)));
+        }
+
+        foreach (RequestedHotkey hotkey in requested)
+        {
+            if (string.IsNullOrWhiteSpace(hotkey.Value))
+            {
+                continue;
+            }
+
             if (!TryParse(hotkey.Value, out uint modifiers, out uint virtualKey, out string? error))
             {
-                UnregisterAll();
+                RollBackRegistrations();
                 string message = $"{hotkey.Name}: {error}";
                 AppLog.Warning("Hotkeys", $"Could not parse hotkey '{hotkey.Value}': {message}");
                 return message;
@@ -57,12 +90,14 @@ public sealed class GlobalHotkeyService : IDisposable
 
             if (!RegisterHotKey(messageWindow.Handle, hotkey.Id, modifiers | ModNoRepeat, virtualKey))
             {
-                UnregisterAll();
-                string message = $"{hotkey.Name}: the combination '{hotkey.Value}' is unavailable or already used.";
+                RollBackRegistrations();
+                string message = $"{hotkey.Name}: the hotkey '{hotkey.Value}' is unavailable or already used.";
                 AppLog.Warning("Hotkeys", message);
                 return message;
             }
 
+            registeredIds.Add(hotkey.Id);
+            actions[hotkey.Id] = new HotkeyAction(hotkey.Name, hotkey.Action);
             AppLog.Information("Hotkeys", $"Registered {hotkey.Name}: {hotkey.Value}.");
         }
 
@@ -78,6 +113,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
         disposed = true;
         UnregisterAll();
+        actions.Clear();
         messageWindow.Dispose();
         AppLog.Information("Hotkeys", "Global hotkey service disposed.");
     }
@@ -100,7 +136,6 @@ public sealed class GlobalHotkeyService : IDisposable
         catch (Exception exception)
         {
             AppLog.Error("Hotkeys", $"Global hotkey action failed: {hotkey.Name}.", exception);
-            throw;
         }
         finally
         {
@@ -108,17 +143,26 @@ public sealed class GlobalHotkeyService : IDisposable
         }
     }
 
+    private void RollBackRegistrations()
+    {
+        UnregisterAll();
+        actions.Clear();
+    }
+
     private void UnregisterAll()
     {
         if (messageWindow.Handle == nint.Zero)
         {
+            registeredIds.Clear();
             return;
         }
 
-        foreach (int id in actions.Keys)
+        foreach (int id in registeredIds)
         {
             _ = UnregisterHotKey(messageWindow.Handle, id);
         }
+
+        registeredIds.Clear();
     }
 
     private static bool TryParse(
@@ -134,9 +178,9 @@ public sealed class GlobalHotkeyService : IDisposable
         string[] parts = value
             .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (parts.Length < 2)
+        if (parts.Length == 0)
         {
-            error = "use at least one modifier and one key, for example Ctrl+Alt+Right.";
+            error = "enter a key, for example F1, 1 or Ctrl+Alt+P.";
             return false;
         }
 
@@ -164,16 +208,36 @@ public sealed class GlobalHotkeyService : IDisposable
             }
         }
 
-        string keyName = parts[^1];
-        if (!Enum.TryParse(keyName, true, out Forms.Keys key) || key == Forms.Keys.None)
+        string keyName = NormalizeKeyName(parts[^1]);
+        if (!Enum.TryParse(keyName, true, out Forms.Keys key) ||
+            key == Forms.Keys.None ||
+            IsModifierKey(key))
         {
-            error = $"unknown key '{keyName}'.";
+            error = $"unknown key '{parts[^1]}'.";
             return false;
         }
 
         virtualKey = (uint)key;
-        return modifiers != 0;
+        return true;
     }
+
+    private static string NormalizeKeyName(string keyName) =>
+        keyName.Length == 1 && char.IsDigit(keyName[0])
+            ? $"D{keyName}"
+            : keyName;
+
+    private static bool IsModifierKey(Forms.Keys key) =>
+        key is Forms.Keys.ControlKey
+            or Forms.Keys.LControlKey
+            or Forms.Keys.RControlKey
+            or Forms.Keys.Menu
+            or Forms.Keys.LMenu
+            or Forms.Keys.RMenu
+            or Forms.Keys.ShiftKey
+            or Forms.Keys.LShiftKey
+            or Forms.Keys.RShiftKey
+            or Forms.Keys.LWin
+            or Forms.Keys.RWin;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -214,6 +278,8 @@ public sealed class GlobalHotkeyService : IDisposable
             }
         }
     }
+
+    private sealed record RequestedHotkey(int Id, string Name, string Value, Action Action);
 
     private sealed record HotkeyAction(string Name, Action Action);
 }
