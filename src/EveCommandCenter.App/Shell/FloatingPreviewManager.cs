@@ -9,9 +9,11 @@ namespace EveCommandCenter.App.Shell;
 
 public sealed class FloatingPreviewManager : IDisposable
 {
+    private static readonly StringComparer CharacterNameComparer = StringComparer.OrdinalIgnoreCase;
+
     private readonly MainWindowViewModel viewModel;
     private readonly IWindowActivationService activationService;
-    private readonly Dictionary<long, FloatingPreviewWindow> windows = [];
+    private readonly Dictionary<long, PreviewWindowEntry> windows = [];
     private bool previewsVisible = true;
     private bool disposed;
 
@@ -23,11 +25,17 @@ public sealed class FloatingPreviewManager : IDisposable
         this.activationService = activationService;
 
         viewModel.Clients.CollectionChanged += OnClientsCollectionChanged;
+        viewModel.CharacterProfiles.CollectionChanged += OnProfilesCollectionChanged;
         viewModel.PropertyChanged += OnSettingsChanged;
 
         foreach (DetectedClientViewModel client in viewModel.Clients)
         {
             client.PropertyChanged += OnClientChanged;
+        }
+
+        foreach (CharacterPreviewProfileViewModel profile in viewModel.CharacterProfiles)
+        {
+            profile.PropertyChanged += OnProfileChanged;
         }
 
         Reconcile();
@@ -39,20 +47,20 @@ public sealed class FloatingPreviewManager : IDisposable
 
         if (!previewsVisible)
         {
-            foreach (FloatingPreviewWindow window in windows.Values)
+            foreach (PreviewWindowEntry entry in windows.Values)
             {
-                window.Hide();
+                entry.Window.Hide();
             }
 
             return;
         }
 
         Reconcile();
-        foreach (FloatingPreviewWindow window in windows.Values)
+        foreach (PreviewWindowEntry entry in windows.Values)
         {
-            if (!window.IsVisible)
+            if (!entry.Window.IsVisible)
             {
-                window.Show();
+                entry.Window.Show();
             }
         }
     }
@@ -66,11 +74,17 @@ public sealed class FloatingPreviewManager : IDisposable
 
         disposed = true;
         viewModel.Clients.CollectionChanged -= OnClientsCollectionChanged;
+        viewModel.CharacterProfiles.CollectionChanged -= OnProfilesCollectionChanged;
         viewModel.PropertyChanged -= OnSettingsChanged;
 
         foreach (DetectedClientViewModel client in viewModel.Clients)
         {
             client.PropertyChanged -= OnClientChanged;
+        }
+
+        foreach (CharacterPreviewProfileViewModel profile in viewModel.CharacterProfiles)
+        {
+            profile.PropertyChanged -= OnProfileChanged;
         }
 
         CloseAll();
@@ -98,6 +112,25 @@ public sealed class FloatingPreviewManager : IDisposable
         Reconcile();
     }
 
+    private void OnProfilesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (CharacterPreviewProfileViewModel profile in e.OldItems)
+            {
+                profile.PropertyChanged -= OnProfileChanged;
+            }
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (CharacterPreviewProfileViewModel profile in e.NewItems)
+            {
+                profile.PropertyChanged += OnProfileChanged;
+            }
+        }
+    }
+
     private void OnClientChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(DetectedClientViewModel.IsPreviewEligible)
@@ -105,6 +138,34 @@ public sealed class FloatingPreviewManager : IDisposable
             or nameof(DetectedClientViewModel.DisplayName))
         {
             Reconcile();
+        }
+    }
+
+    private void OnProfileChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not CharacterPreviewProfileViewModel profile)
+        {
+            return;
+        }
+
+        if (e.PropertyName == nameof(CharacterPreviewProfileViewModel.CustomLabel))
+        {
+            foreach (PreviewWindowEntry entry in EntriesForProfile(profile))
+            {
+                entry.Window.CustomLabel = profile.CustomLabel;
+            }
+
+            return;
+        }
+
+        if (e.PropertyName == nameof(CharacterPreviewProfileViewModel.ContentMode))
+        {
+            foreach (PreviewWindowEntry entry in EntriesForProfile(profile))
+            {
+                ApplyProfile(entry.Window, profile);
+                ApplyPreferredModeSize(entry.Window, profile.ContentMode);
+                PersistWindowLayout(entry);
+            }
         }
     }
 
@@ -118,13 +179,22 @@ public sealed class FloatingPreviewManager : IDisposable
 
         if (e.PropertyName is nameof(MainWindowViewModel.AlwaysOnTop)
             or nameof(MainWindowViewModel.ShowPreviewHeader)
-            or nameof(MainWindowViewModel.PreviewWidth)
-            or nameof(MainWindowViewModel.PreviewHeight)
             or nameof(MainWindowViewModel.PreviewOpacity))
         {
-            foreach (FloatingPreviewWindow window in windows.Values)
+            foreach (PreviewWindowEntry entry in windows.Values)
             {
-                ApplySettings(window);
+                ApplyGlobalSettings(entry.Window);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.PreviewWidth)
+            or nameof(MainWindowViewModel.PreviewHeight))
+        {
+            foreach (PreviewWindowEntry entry in windows.Values.Where(entry => !entry.Profile.HasSavedBounds))
+            {
+                ApplyPreferredModeSize(entry.Window, entry.Profile.ContentMode);
             }
         }
     }
@@ -142,8 +212,10 @@ public sealed class FloatingPreviewManager : IDisposable
             return;
         }
 
-        HashSet<long> eligibleIds = viewModel.Clients
+        DetectedClientViewModel[] eligibleClients = viewModel.Clients
             .Where(client => client.IsPreviewEligible && client.IsResponsive)
+            .ToArray();
+        HashSet<long> eligibleIds = eligibleClients
             .Select(client => client.SourceWindowId)
             .ToHashSet();
 
@@ -152,29 +224,62 @@ public sealed class FloatingPreviewManager : IDisposable
             CloseWindow(windowId);
         }
 
-        foreach (DetectedClientViewModel client in viewModel.Clients.Where(client =>
-                     client.IsPreviewEligible && client.IsResponsive))
+        foreach (DetectedClientViewModel client in eligibleClients)
         {
-            if (!windows.ContainsKey(client.SourceWindowId))
+            if (windows.TryGetValue(client.SourceWindowId, out PreviewWindowEntry? existing))
             {
-                CreateWindow(client);
+                if (!CharacterNameComparer.Equals(existing.Profile.CharacterName, client.DisplayName))
+                {
+                    CloseWindow(client.SourceWindowId);
+                    CreateWindow(client);
+                }
+
+                continue;
             }
+
+            CreateWindow(client);
         }
     }
 
     private void CreateWindow(DetectedClientViewModel client)
     {
+        CharacterPreviewProfileViewModel profile =
+            viewModel.GetOrCreateCharacterProfile(client.DisplayName);
         var window = new FloatingPreviewWindow(client, ActivateClientAsync);
-        ApplySettings(window);
-        PositionNewWindow(window, windows.Count);
+        var entry = new PreviewWindowEntry(client, profile, window);
 
-        window.Closed += (_, _) => windows.Remove(client.SourceWindowId);
-        windows.Add(client.SourceWindowId, window);
+        ApplyGlobalSettings(window);
+        ApplyProfile(window, profile);
+
+        if (TryGetSavedBounds(profile, out Rect savedBounds))
+        {
+            window.ApplyBounds(
+                savedBounds.Left,
+                savedBounds.Top,
+                savedBounds.Width,
+                savedBounds.Height);
+        }
+        else
+        {
+            Size defaultSize = GetPreferredModeSize(profile.ContentMode);
+            Rect defaultBounds = CalculateNewWindowBounds(defaultSize, windows.Count);
+            window.ApplyBounds(
+                defaultBounds.Left,
+                defaultBounds.Top,
+                defaultBounds.Width,
+                defaultBounds.Height);
+        }
+
+        window.LayoutCommitted += OnWindowLayoutCommitted;
+        window.Closed += OnWindowClosed;
+        windows.Add(client.SourceWindowId, entry);
 
         if (previewsVisible)
         {
             window.Show();
         }
+
+        window.EnableLayoutTracking();
     }
 
     private async Task ActivateClientAsync(long sourceWindowId)
@@ -182,52 +287,182 @@ public sealed class FloatingPreviewManager : IDisposable
         await activationService.ActivateAsync(new WindowId(sourceWindowId));
     }
 
-    private void ApplySettings(FloatingPreviewWindow window)
+    private void ApplyGlobalSettings(FloatingPreviewWindow window)
     {
         window.Topmost = viewModel.AlwaysOnTop;
         window.ShowHeader = viewModel.ShowPreviewHeader;
-        window.Width = Math.Clamp(viewModel.PreviewWidth, 220, 1920);
-        window.Height = Math.Clamp(viewModel.PreviewHeight, 140, 1080);
         window.Opacity = Math.Clamp(viewModel.PreviewOpacity, 0.35, 1.0);
     }
 
-    private static void PositionNewWindow(Window window, int index)
+    private static void ApplyProfile(
+        FloatingPreviewWindow window,
+        CharacterPreviewProfileViewModel profile)
     {
-        Rect workArea = SystemParameters.WorkArea;
-        double margin = 12;
-        double left = workArea.Right - window.Width - margin;
-        double top = workArea.Top + margin + (index * (window.Height + margin));
+        window.CustomLabel = profile.CustomLabel;
+        window.ContentMode = profile.ContentMode;
 
-        if (top + window.Height > workArea.Bottom)
+        if (profile.ContentMode == PreviewContentMode.TextOnly)
         {
-            int rowsPerColumn = Math.Max(1, (int)(workArea.Height / (window.Height + margin)));
-            int column = index / rowsPerColumn;
-            int row = index % rowsPerColumn;
-            left = workArea.Right - ((column + 1) * (window.Width + margin));
-            top = workArea.Top + margin + (row * (window.Height + margin));
+            window.MinWidth = 120;
+            window.MinHeight = 48;
         }
-
-        window.Left = Math.Max(workArea.Left, left);
-        window.Top = Math.Max(workArea.Top, top);
+        else
+        {
+            window.MinWidth = 220;
+            window.MinHeight = 140;
+        }
     }
 
-    private void CloseWindow(long sourceWindowId)
+    private void ApplyPreferredModeSize(
+        FloatingPreviewWindow window,
+        PreviewContentMode contentMode)
     {
-        if (!windows.Remove(sourceWindowId, out FloatingPreviewWindow? window))
+        Size preferredSize = GetPreferredModeSize(contentMode);
+        window.ApplySize(preferredSize.Width, preferredSize.Height);
+    }
+
+    private Size GetPreferredModeSize(PreviewContentMode contentMode) =>
+        contentMode == PreviewContentMode.TextOnly
+            ? new Size(240, 72)
+            : new Size(
+                Math.Clamp(viewModel.PreviewWidth, 220, 1920),
+                Math.Clamp(viewModel.PreviewHeight, 140, 1080));
+
+    private static bool TryGetSavedBounds(
+        CharacterPreviewProfileViewModel profile,
+        out Rect bounds)
+    {
+        bounds = Rect.Empty;
+        if (!profile.HasSavedBounds)
+        {
+            return false;
+        }
+
+        double width = Math.Clamp(profile.Width!.Value, 120, 1920);
+        double height = Math.Clamp(profile.Height!.Value, 48, 1080);
+        var candidate = new Rect(profile.Left!.Value, profile.Top!.Value, width, height);
+        var virtualScreen = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+        Rect visibleArea = Rect.Intersect(candidate, virtualScreen);
+
+        if (visibleArea.IsEmpty || visibleArea.Width < 48 || visibleArea.Height < 32)
+        {
+            return false;
+        }
+
+        bounds = candidate;
+        return true;
+    }
+
+    private static Rect CalculateNewWindowBounds(Size size, int index)
+    {
+        Rect workArea = SystemParameters.WorkArea;
+        const double margin = 12;
+        double left = workArea.Right - size.Width - margin;
+        double top = workArea.Top + margin + (index * (size.Height + margin));
+
+        if (top + size.Height > workArea.Bottom)
+        {
+            int rowsPerColumn = Math.Max(1, (int)(workArea.Height / (size.Height + margin)));
+            int column = index / rowsPerColumn;
+            int row = index % rowsPerColumn;
+            left = workArea.Right - ((column + 1) * (size.Width + margin));
+            top = workArea.Top + margin + (row * (size.Height + margin));
+        }
+
+        left = Math.Max(workArea.Left, left);
+        top = Math.Max(workArea.Top, top);
+        return new Rect(left, top, size.Width, size.Height);
+    }
+
+    private IEnumerable<PreviewWindowEntry> EntriesForProfile(
+        CharacterPreviewProfileViewModel profile) =>
+        windows.Values.Where(entry => CharacterNameComparer.Equals(
+            entry.Profile.CharacterName,
+            profile.CharacterName));
+
+    private void OnWindowLayoutCommitted(
+        object? sender,
+        PreviewWindowLayoutChangedEventArgs e)
+    {
+        if (sender is not FloatingPreviewWindow window)
         {
             return;
         }
 
-        window.Close();
+        PreviewWindowEntry? entry = windows.Values.FirstOrDefault(candidate =>
+            ReferenceEquals(candidate.Window, window));
+        if (entry is null)
+        {
+            return;
+        }
+
+        viewModel.UpdateCharacterLayout(
+            entry.Profile.CharacterName,
+            e.Left,
+            e.Top,
+            e.Width,
+            e.Height);
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is not FloatingPreviewWindow window)
+        {
+            return;
+        }
+
+        long? sourceWindowId = windows
+            .Where(pair => ReferenceEquals(pair.Value.Window, window))
+            .Select(pair => (long?)pair.Key)
+            .FirstOrDefault();
+        if (sourceWindowId.HasValue)
+        {
+            windows.Remove(sourceWindowId.Value);
+        }
+    }
+
+    private void PersistWindowLayout(PreviewWindowEntry entry)
+    {
+        PreviewWindowLayoutChangedEventArgs layout = entry.Window.CaptureLayout();
+        viewModel.UpdateCharacterLayout(
+            entry.Profile.CharacterName,
+            layout.Left,
+            layout.Top,
+            layout.Width,
+            layout.Height);
+    }
+
+    private void CloseWindow(long sourceWindowId)
+    {
+        if (!windows.Remove(sourceWindowId, out PreviewWindowEntry? entry))
+        {
+            return;
+        }
+
+        PersistWindowLayout(entry);
+        entry.Window.LayoutCommitted -= OnWindowLayoutCommitted;
+        entry.Window.Closed -= OnWindowClosed;
+        entry.Window.Close();
     }
 
     private void CloseAll()
     {
-        foreach (FloatingPreviewWindow window in windows.Values.ToArray())
+        foreach ((long sourceWindowId, PreviewWindowEntry entry) in windows.ToArray())
         {
-            window.Close();
+            PersistWindowLayout(entry);
+            entry.Window.LayoutCommitted -= OnWindowLayoutCommitted;
+            entry.Window.Closed -= OnWindowClosed;
+            entry.Window.Close();
+            windows.Remove(sourceWindowId);
         }
-
-        windows.Clear();
     }
+
+    private sealed record PreviewWindowEntry(
+        DetectedClientViewModel Client,
+        CharacterPreviewProfileViewModel Profile,
+        FloatingPreviewWindow Window);
 }
