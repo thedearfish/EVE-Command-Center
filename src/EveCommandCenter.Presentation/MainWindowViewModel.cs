@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using System.Windows.Threading;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Application.Discovery;
 
 namespace EveCommandCenter.Presentation;
@@ -24,6 +25,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string nextCharacterHotkey;
     private string previousCharacterHotkey;
     private string togglePreviewsHotkey;
+    private bool refreshInProgress;
     private bool disposed;
 
     public MainWindowViewModel(
@@ -55,14 +57,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         SaveCommand = new RelayCommand(() => SettingsSaveRequested?.Invoke(this, EventArgs.Empty));
 
-        timer = new DispatcherTimer(DispatcherPriority.Background)
+        timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle)
         {
-            Interval = TimeSpan.FromMilliseconds(750),
+            Interval = TimeSpan.FromSeconds(1),
         };
         timer.Tick += OnTimerTick;
         timer.Start();
 
-        Refresh();
+        _ = RefreshAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -203,6 +205,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             normalizedName,
             string.Empty,
             PreviewContentMode.Standard,
+            string.Empty,
             null,
             null,
             null,
@@ -225,11 +228,63 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         profile.UpdateLayout(left, top, width, height);
     }
 
-    public void Refresh()
+    public void Refresh() => ApplyRefresh(CaptureClassifiedWindows());
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        timer.Stop();
+        timer.Tick -= OnTimerTick;
+
+        foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
+        {
+            profile.PropertyChanged -= OnProfilePropertyChanged;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (disposed || refreshInProgress)
+        {
+            return;
+        }
+
+        refreshInProgress = true;
+        try
+        {
+            ClassifiedWindow[] detected = await Task.Run(CaptureClassifiedWindows);
+            if (!disposed)
+            {
+                ApplyRefresh(detected);
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"EVE client monitoring failed: {exception.Message}";
+            AppLog.Error("Discovery", "Background EVE client scan failed.", exception);
+        }
+        finally
+        {
+            refreshInProgress = false;
+        }
+    }
+
+    private ClassifiedWindow[] CaptureClassifiedWindows() =>
+        windowSnapshotSource
+            .Capture()
+            .Select(window => new ClassifiedWindow(window, classifier.Classify(window)))
+            .Where(item => item.Classification.Kind != EveWindowKind.NotEve)
+            .ToArray();
+
+    private void ApplyRefresh(IReadOnlyList<ClassifiedWindow> detectedWindows)
     {
         try
         {
-            IReadOnlyList<WindowCandidate> windows = windowSnapshotSource.Capture();
             var seenWindowIds = new HashSet<long>();
 
             foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
@@ -237,14 +292,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 profile.IsDetected = false;
             }
 
-            foreach (WindowCandidate window in windows)
+            foreach (ClassifiedWindow item in detectedWindows)
             {
-                EveWindowClassification classification = classifier.Classify(window);
-                if (classification.Kind == EveWindowKind.NotEve)
-                {
-                    continue;
-                }
-
+                WindowCandidate window = item.Window;
+                EveWindowClassification classification = item.Classification;
                 long sourceWindowId = window.WindowId.Value;
                 seenWindowIds.Add(sourceWindowId);
                 bool isCharacter = classification.Kind == EveWindowKind.Character;
@@ -300,23 +351,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception exception)
         {
             StatusMessage = $"EVE client monitoring failed: {exception.Message}";
-        }
-    }
-
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-
-        disposed = true;
-        timer.Stop();
-        timer.Tick -= OnTimerTick;
-
-        foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
-        {
-            profile.PropertyChanged -= OnProfilePropertyChanged;
+            AppLog.Error("Discovery", "Applying EVE client scan failed.", exception);
         }
     }
 
@@ -330,6 +365,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         if (e.PropertyName is nameof(CharacterPreviewProfileViewModel.CustomLabel)
             or nameof(CharacterPreviewProfileViewModel.ContentMode)
+            or nameof(CharacterPreviewProfileViewModel.ActivationHotkey)
             or nameof(CharacterPreviewProfileViewModel.HasSavedBounds))
         {
             SettingsPersistRequested?.Invoke(this, EventArgs.Empty);
@@ -370,7 +406,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void OnTimerTick(object? sender, EventArgs e) => Refresh();
+    private async void OnTimerTick(object? sender, EventArgs e) => await RefreshAsync();
 
     private void NotifyCounters()
     {
@@ -401,4 +437,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         return true;
     }
+
+    private sealed record ClassifiedWindow(
+        WindowCandidate Window,
+        EveWindowClassification Classification);
 }
