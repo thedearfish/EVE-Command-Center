@@ -19,6 +19,7 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="10" />
     </Style>
+
     <Style TargetType="TextBox">
       <Setter Property="Height" Value="34" />
       <Setter Property="Padding" Value="10,6" />
@@ -28,6 +29,18 @@
       <Setter Property="CaretBrush" Value="#E6EDF3" />
       <Setter Property="SelectionBrush" Value="#27688A" />
     </Style>
+
+    <Style x:Key="HotkeyCaptureTextBox"
+           TargetType="TextBox"
+           BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="ToolTip" Value="Click here, then press the required key or key combination. Press Esc to clear." />
+      <EventSetter Event="PreviewKeyDown" Handler="OnHotkeyPreviewKeyDown" />
+      <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnHotkeyPreviewMouseLeftButtonDown" />
+      <EventSetter Event="GotKeyboardFocus" Handler="OnHotkeyGotKeyboardFocus" />
+    </Style>
+
     <Style TargetType="ComboBox">
       <Setter Property="Height" Value="34" />
       <Setter Property="Padding" Value="8,4" />
@@ -35,28 +48,28 @@
       <Setter Property="Foreground" Value="#E6EDF3" />
       <Setter Property="BorderBrush" Value="#34495C" />
     </Style>
+
     <Style TargetType="ComboBoxItem">
       <Setter Property="Padding" Value="10,7" />
-      <Setter Property="Background" Value="#16212B" />
-      <Setter Property="Foreground" Value="#F2F6FA" />
+      <Setter Property="Foreground" Value="Black" />
       <Style.Triggers>
         <Trigger Property="IsHighlighted" Value="True">
-          <Setter Property="Background" Value="#24506A" />
-          <Setter Property="Foreground" Value="White" />
+          <Setter Property="Foreground" Value="Black" />
         </Trigger>
         <Trigger Property="IsSelected" Value="True">
-          <Setter Property="Background" Value="#1E6F9F" />
-          <Setter Property="Foreground" Value="White" />
+          <Setter Property="Foreground" Value="Black" />
         </Trigger>
         <Trigger Property="IsEnabled" Value="False">
-          <Setter Property="Foreground" Value="#768391" />
+          <Setter Property="Foreground" Value="#666666" />
         </Trigger>
       </Style.Triggers>
     </Style>
+
     <Style TargetType="CheckBox">
       <Setter Property="Margin" Value="0,0,0,12" />
       <Setter Property="FontSize" Value="14" />
     </Style>
+
     <Style x:Key="MutedText" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#8B9AAA" />
       <Setter Property="TextWrapping" Value="Wrap" />
@@ -102,7 +115,7 @@
             <TextBlock FontSize="20" FontWeight="SemiBold" Text="Startup and tray" />
             <TextBlock Margin="0,6,0,18"
                        Style="{StaticResource MutedText}"
-                       Text="Each extracted test build now keeps settings, first-run state and logs in its own folder. Closing this window hides it; Exit in the tray menu fully stops the application." />
+                       Text="Each extracted test build keeps settings, first-run state and logs in its own folder. Closing this window hides it; Exit in the tray menu fully stops the application." />
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -179,7 +192,7 @@
             <TextBlock FontSize="20" FontWeight="SemiBold" Text="Per-character appearance and switching" />
             <TextBlock Margin="0,6,0,16"
                        Style="{StaticResource MutedText}"
-                       Text="Choose what each character window renders, add a caption and assign a direct activation hotkey. A hotkey may be a single key such as F1, 1 or Q, or a combination such as Ctrl+Alt+1." />
+                       Text="Choose what each character window renders, add a caption and assign a direct activation hotkey. Click a hotkey box and press the required key or combination; press Esc to clear it." />
 
             <ItemsControl ItemsSource="{Binding CharacterProfiles}">
               <ItemsControl.ItemTemplate>
@@ -237,8 +250,8 @@
 
                       <StackPanel Grid.Column="6">
                         <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Activate hotkey" />
-                        <TextBox Text="{Binding ActivationHotkey, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 ToolTip="Examples: F1, 1, Q or Ctrl+Alt+1. Leave empty to disable." />
+                        <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                                 Text="{Binding ActivationHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                       </StackPanel>
                     </Grid>
                   </Border>
@@ -253,7 +266,7 @@
             <TextBlock FontSize="20" FontWeight="SemiBold" Text="Global hotkeys" />
             <TextBlock Margin="0,6,0,18"
                        Style="{StaticResource MutedText}"
-                       Text="A hotkey may be one key or a combination. Bare letter and number keys are system-wide while EVE Command Center is running, so assign them deliberately. Click Save to register changes." />
+                       Text="Click a box and press one key or a combination. Bare letter and number keys are system-wide while EVE Command Center is running. Click Save to register changes." />
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -264,15 +277,18 @@
               </Grid.ColumnDefinitions>
               <StackPanel>
                 <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Next character" />
-                <TextBox Text="{Binding NextCharacterHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding NextCharacterHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
               </StackPanel>
               <StackPanel Grid.Column="2">
                 <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Previous character" />
-                <TextBox Text="{Binding PreviousCharacterHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding PreviousCharacterHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
               </StackPanel>
               <StackPanel Grid.Column="4">
                 <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Show / hide windows" />
-                <TextBox Text="{Binding TogglePreviewsHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding TogglePreviewsHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
               </StackPanel>
             </Grid>
           </StackPanel>
