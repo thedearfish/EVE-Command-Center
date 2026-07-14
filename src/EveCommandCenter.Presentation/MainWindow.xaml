@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding Title}"
-        Width="940"
-        Height="780"
-        MinWidth="820"
-        MinHeight="660"
+        Width="980"
+        Height="800"
+        MinWidth="860"
+        MinHeight="680"
         WindowStartupLocation="CenterScreen"
         Background="#0E141B"
         Foreground="#E6EDF3"
@@ -26,6 +26,7 @@
       <Setter Property="Foreground" Value="#E6EDF3" />
       <Setter Property="BorderBrush" Value="#34495C" />
       <Setter Property="CaretBrush" Value="#E6EDF3" />
+      <Setter Property="SelectionBrush" Value="#27688A" />
     </Style>
     <Style TargetType="ComboBox">
       <Setter Property="Height" Value="34" />
@@ -33,6 +34,24 @@
       <Setter Property="Background" Value="#0F171F" />
       <Setter Property="Foreground" Value="#E6EDF3" />
       <Setter Property="BorderBrush" Value="#34495C" />
+    </Style>
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="Background" Value="#16212B" />
+      <Setter Property="Foreground" Value="#F2F6FA" />
+      <Style.Triggers>
+        <Trigger Property="IsHighlighted" Value="True">
+          <Setter Property="Background" Value="#24506A" />
+          <Setter Property="Foreground" Value="White" />
+        </Trigger>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="#1E6F9F" />
+          <Setter Property="Foreground" Value="White" />
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="#768391" />
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style TargetType="CheckBox">
       <Setter Property="Margin" Value="0,0,0,12" />
@@ -83,7 +102,7 @@
             <TextBlock FontSize="20" FontWeight="SemiBold" Text="Startup and tray" />
             <TextBlock Margin="0,6,0,18"
                        Style="{StaticResource MutedText}"
-                       Text="After initial setup the application starts silently in the system tray. Closing this window hides it; Exit in the tray menu fully stops the application." />
+                       Text="Each extracted test build now keeps settings, first-run state and logs in its own folder. Closing this window hides it; Exit in the tray menu fully stops the application." />
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -157,10 +176,10 @@
 
         <Border Style="{StaticResource CardStyle}">
           <StackPanel>
-            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Per-character appearance" />
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Per-character appearance and switching" />
             <TextBlock Margin="0,6,0,16"
                        Style="{StaticResource MutedText}"
-                       Text="Choose what each character window renders and add your own caption. Text-only mode does not create a DWM thumbnail and uses a compact gray tile for the lowest compositor load." />
+                       Text="Choose what each character window renders, add a caption and assign a direct activation hotkey. A hotkey may be a single key such as F1, 1 or Q, or a combination such as Ctrl+Alt+1." />
 
             <ItemsControl ItemsSource="{Binding CharacterProfiles}">
               <ItemsControl.ItemTemplate>
@@ -173,11 +192,13 @@
                           CornerRadius="7">
                     <Grid>
                       <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="190" />
-                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="155" />
+                        <ColumnDefinition Width="14" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="16" />
-                        <ColumnDefinition Width="230" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="190" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="155" />
                       </Grid.ColumnDefinitions>
 
                       <StackPanel VerticalAlignment="Center">
@@ -213,6 +234,12 @@
                                   SelectedValuePath="Value"
                                   SelectedValue="{Binding ContentMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                       </StackPanel>
+
+                      <StackPanel Grid.Column="6">
+                        <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Activate hotkey" />
+                        <TextBox Text="{Binding ActivationHotkey, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                 ToolTip="Examples: F1, 1, Q or Ctrl+Alt+1. Leave empty to disable." />
+                      </StackPanel>
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -226,7 +253,7 @@
             <TextBlock FontSize="20" FontWeight="SemiBold" Text="Global hotkeys" />
             <TextBlock Margin="0,6,0,18"
                        Style="{StaticResource MutedText}"
-                       Text="Use combinations such as Ctrl+Alt+Right, Ctrl+Shift+PageDown or Alt+P. Click Save to register changes." />
+                       Text="A hotkey may be one key or a combination. Bare letter and number keys are system-wide while EVE Command Center is running, so assign them deliberately. Click Save to register changes." />
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
