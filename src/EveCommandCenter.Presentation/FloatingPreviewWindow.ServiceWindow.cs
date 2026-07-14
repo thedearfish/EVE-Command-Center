@@ -54,7 +54,10 @@ public partial class FloatingPreviewWindow
         }
 
         LocationChanged += OnServiceWindowGeometryChanged;
-        SizeChanged += OnServiceWindowGeometryChanged;
+        AddHandler(
+            FrameworkElement.SizeChangedEvent,
+            new SizeChangedEventHandler(OnServiceWindowGeometryChanged),
+            handledEventsToo: true);
         StateChanged += OnServiceWindowStateChanged;
         Closed += OnServiceWindowClosed;
 
@@ -237,7 +240,9 @@ public partial class FloatingPreviewWindow
     {
         serviceWindowClosed = true;
         LocationChanged -= OnServiceWindowGeometryChanged;
-        SizeChanged -= OnServiceWindowGeometryChanged;
+        RemoveHandler(
+            FrameworkElement.SizeChangedEvent,
+            new SizeChangedEventHandler(OnServiceWindowGeometryChanged));
         StateChanged -= OnServiceWindowStateChanged;
         Closed -= OnServiceWindowClosed;
 
