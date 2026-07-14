@@ -58,7 +58,6 @@
                      FontSize="14"
                      Text="{Binding DisplayName}" />
           <TextBlock Margin="0,1,0,0"
-                     Style="{StaticResource OverlaySecondaryText}"
                      Text="{Binding CurrentSystem}">
             <TextBlock.Style>
               <Style TargetType="TextBlock" BasedOn="{StaticResource OverlaySecondaryText}">
@@ -72,7 +71,6 @@
             </TextBlock.Style>
           </TextBlock>
           <TextBlock Margin="0,1,0,0"
-                     Style="{StaticResource OverlaySecondaryText}"
                      Text="{Binding CustomLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}">
             <TextBlock.Style>
               <Style TargetType="TextBlock" BasedOn="{StaticResource OverlaySecondaryText}">
