@@ -66,9 +66,9 @@ public sealed record GeneralSettings
 
 public sealed record HotkeySettings
 {
-    public string NextCharacter { get; init; } = "Ctrl+Alt+Right";
+    public string NextCharacter { get; init; } = string.Empty;
 
-    public string PreviousCharacter { get; init; } = "Ctrl+Alt+Left";
+    public string PreviousCharacter { get; init; } = string.Empty;
 
-    public string TogglePreviews { get; init; } = "Ctrl+Alt+P";
+    public string TogglePreviews { get; init; } = string.Empty;
 }
