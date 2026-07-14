@@ -28,7 +28,6 @@ public sealed class SerializedSettingsWriter : IDisposable
 
         try
         {
-            AppLog.SetCurrentOperation($"settings save: {reason}");
             AppLog.Information("Settings", $"Settings save started. Reason: {reason}.");
             await store.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
@@ -49,7 +48,6 @@ public sealed class SerializedSettingsWriter : IDisposable
         }
         finally
         {
-            AppLog.SetCurrentOperation("idle");
             gate.Release();
         }
     }
