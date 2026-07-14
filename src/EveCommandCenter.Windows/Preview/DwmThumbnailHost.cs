@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Application.Preview;
 using EveCommandCenter.Core.Clients;
 
@@ -81,7 +82,7 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
     private void RecreateSession()
     {
         DisposeSession();
-        ErrorText = string.Empty;
+        SetError(string.Empty);
 
         if (!IsLoaded || SourceWindowId == 0 || ownerWindow is null)
         {
@@ -99,16 +100,21 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
             session = DwmThumbnailSession.Register(
                 new WindowId(destinationHandle.ToInt64()),
                 new WindowId(SourceWindowId));
+            AppLog.Information(
+                "DWM",
+                $"Thumbnail registered; source=0x{SourceWindowId:X}, destination=0x{destinationHandle.ToInt64():X}.");
             UpdateThumbnail();
         }
         catch (Win32Exception exception)
         {
-            ErrorText = $"DWM preview unavailable: 0x{exception.NativeErrorCode:X8}";
+            SetError(
+                $"DWM preview unavailable: 0x{exception.NativeErrorCode:X8}",
+                exception);
             DisposeSession();
         }
         catch (Exception exception)
         {
-            ErrorText = $"DWM preview unavailable: {exception.Message}";
+            SetError($"DWM preview unavailable: {exception.Message}", exception);
             DisposeSession();
         }
     }
@@ -160,19 +166,50 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
                     fitted.Top,
                     fitted.Width,
                     fitted.Height));
-                ErrorText = string.Empty;
+                SetError(string.Empty);
             }
         }
         catch (Exception exception)
         {
-            ErrorText = $"Preview update failed: {exception.Message}";
+            SetError($"Preview update failed: {exception.Message}", exception);
+        }
+    }
+
+    private void SetError(string message, Exception? exception = null)
+    {
+        if (string.Equals(ErrorText, message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string previous = ErrorText;
+        ErrorText = message;
+
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            AppLog.Warning(
+                "DWM",
+                $"{message} Source HWND=0x{SourceWindowId:X}.",
+                exception);
+        }
+        else if (!string.IsNullOrWhiteSpace(previous))
+        {
+            AppLog.Information(
+                "DWM",
+                $"Thumbnail rendering recovered for source HWND=0x{SourceWindowId:X}.");
         }
     }
 
     private void DisposeSession()
     {
-        session?.Dispose();
-        session = null;
+        if (session is not null)
+        {
+            AppLog.Information(
+                "DWM",
+                $"Thumbnail unregistered for source HWND=0x{SourceWindowId:X}.");
+            session.Dispose();
+            session = null;
+        }
     }
 
     [DllImport("user32.dll", SetLastError = true)]
