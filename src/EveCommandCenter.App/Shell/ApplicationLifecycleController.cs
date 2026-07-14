@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using EveCommandCenter.App.Startup;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Presentation;
 
 namespace EveCommandCenter.App.Shell;
@@ -34,8 +35,13 @@ public sealed class ApplicationLifecycleController : IDisposable
     public void Start(bool forceSettingsWindow)
     {
         firstRunPending = firstRunStateStore.IsFirstRun();
+        AppLog.Information(
+            "Lifecycle",
+            $"Lifecycle started; firstRun={firstRunPending}; forceSettings={forceSettingsWindow}.");
+
         if (!firstRunPending && !forceSettingsWindow)
         {
+            AppLog.Information("Lifecycle", "Settings window remains hidden on startup.");
             return;
         }
 
@@ -46,6 +52,9 @@ public sealed class ApplicationLifecycleController : IDisposable
     {
         if (windowClosed || exitRequested)
         {
+            AppLog.Warning(
+                "Lifecycle",
+                $"Settings window show request ignored; windowClosed={windowClosed}; exitRequested={exitRequested}.");
             return;
         }
 
@@ -61,6 +70,7 @@ public sealed class ApplicationLifecycleController : IDisposable
 
         settingsWindow.Activate();
         settingsWindow.Focus();
+        AppLog.Information("Lifecycle", "Settings window shown and activated.");
     }
 
     public void RequestExit(int exitCode)
@@ -71,6 +81,7 @@ public sealed class ApplicationLifecycleController : IDisposable
         }
 
         exitRequested = true;
+        AppLog.Information("Lifecycle", $"Application exit requested with code {exitCode}.");
         CompleteFirstRunIfNeeded();
         trayIcon.Dispose();
 
@@ -93,6 +104,7 @@ public sealed class ApplicationLifecycleController : IDisposable
         settingsWindow.Closing -= OnSettingsWindowClosing;
         settingsWindow.Closed -= OnSettingsWindowClosed;
         trayIcon.Dispose();
+        AppLog.Information("Lifecycle", "Application lifecycle controller disposed.");
     }
 
     private void OnSettingsWindowClosing(object? sender, CancelEventArgs e)
@@ -105,11 +117,13 @@ public sealed class ApplicationLifecycleController : IDisposable
         CompleteFirstRunIfNeeded();
         e.Cancel = true;
         settingsWindow.Hide();
+        AppLog.Information("Lifecycle", "Settings window close intercepted and hidden to tray.");
     }
 
     private void OnSettingsWindowClosed(object? sender, EventArgs e)
     {
         windowClosed = true;
+        AppLog.Information("Lifecycle", "Settings window closed.");
     }
 
     private void CompleteFirstRunIfNeeded()
@@ -123,10 +137,14 @@ public sealed class ApplicationLifecycleController : IDisposable
         {
             firstRunStateStore.MarkCompleted();
             firstRunPending = false;
+            AppLog.Information("Lifecycle", "First-run setup marked as completed.");
         }
-        catch
+        catch (Exception exception)
         {
-            // Keep running. A write failure only means setup may be shown again next launch.
+            AppLog.Warning(
+                "Lifecycle",
+                "Could not persist first-run completion state; setup may appear again.",
+                exception);
         }
     }
 }
