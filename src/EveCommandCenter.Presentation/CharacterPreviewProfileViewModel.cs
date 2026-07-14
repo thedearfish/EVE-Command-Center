@@ -8,6 +8,7 @@ public sealed record CharacterPreviewProfileSnapshot(
     string CustomLabel,
     PreviewContentMode ContentMode,
     string ActivationHotkey,
+    string GroupId,
     double? Left,
     double? Top,
     double? Width,
@@ -18,6 +19,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
     private string customLabel;
     private PreviewContentMode contentMode;
     private string activationHotkey;
+    private string groupId;
     private double? left;
     private double? top;
     private double? width;
@@ -30,6 +32,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
         customLabel = snapshot.CustomLabel.Trim();
         contentMode = snapshot.ContentMode;
         activationHotkey = snapshot.ActivationHotkey.Trim();
+        groupId = snapshot.GroupId.Trim();
         left = snapshot.Left;
         top = snapshot.Top;
         width = snapshot.Width;
@@ -58,6 +61,12 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
         set => SetField(ref activationHotkey, value.Trim());
     }
 
+    public string GroupId
+    {
+        get => groupId;
+        private set => SetField(ref groupId, value.Trim());
+    }
+
     public double? Left => left;
 
     public double? Top => top;
@@ -77,6 +86,8 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
         get => isDetected;
         internal set => SetField(ref isDetected, value);
     }
+
+    public void UpdateGroup(string? nextGroupId) => GroupId = nextGroupId?.Trim() ?? string.Empty;
 
     public void UpdateLayout(double nextLeft, double nextTop, double nextWidth, double nextHeight)
     {
@@ -104,6 +115,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
             CustomLabel,
             ContentMode,
             ActivationHotkey,
+            GroupId,
             Left,
             Top,
             Width,
