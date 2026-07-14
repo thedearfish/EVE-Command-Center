@@ -69,7 +69,8 @@
                 BorderThickness="0"
                 ClipToBounds="True">
           <Grid>
-            <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
+            <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
+                                      ThumbnailOpacity="{Binding Opacity, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
             <TextBlock Margin="12"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center"
@@ -85,7 +86,8 @@
     <DataTemplate x:Key="ImageOnlyPreviewTemplate">
       <Border Background="#05080C" BorderThickness="0" ClipToBounds="True">
         <Grid>
-          <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
+          <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
+                                    ThumbnailOpacity="{Binding Opacity, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
           <TextBlock Margin="12"
                      HorizontalAlignment="Center"
                      VerticalAlignment="Center"
