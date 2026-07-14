@@ -15,7 +15,10 @@
         Background="#0B1117"
         Foreground="#E6EDF3"
         FontFamily="Segoe UI"
-        PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown">
+        PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown"
+        PreviewMouseMove="OnSurfacePreviewMouseMove"
+        PreviewMouseLeftButtonUp="OnSurfacePreviewMouseLeftButtonUp"
+        LostMouseCapture="OnSurfaceLostMouseCapture">
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
@@ -28,8 +31,7 @@
 
         <Border Padding="10,7"
                 Background="#111A22"
-                BorderBrush="#263544"
-                BorderThickness="0,0,0,1"
+                BorderThickness="0"
                 Visibility="{Binding ShowHeader, RelativeSource={RelativeSource AncestorType={x:Type Window}}, Converter={StaticResource BooleanToVisibilityConverter}}">
           <DockPanel>
             <TextBlock DockPanel.Dock="Right"
@@ -64,6 +66,7 @@
 
         <Border Grid.Row="1"
                 Background="#05080C"
+                BorderThickness="0"
                 ClipToBounds="True">
           <Grid>
             <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
@@ -80,7 +83,7 @@
     </DataTemplate>
 
     <DataTemplate x:Key="ImageOnlyPreviewTemplate">
-      <Border Background="#05080C" ClipToBounds="True">
+      <Border Background="#05080C" BorderThickness="0" ClipToBounds="True">
         <Grid>
           <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
           <TextBlock Margin="12"
@@ -97,8 +100,7 @@
     <DataTemplate x:Key="TextOnlyPreviewTemplate">
       <Border Padding="14,10"
               Background="#3A3F45"
-              BorderBrush="#5B626A"
-              BorderThickness="1">
+              BorderThickness="0">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
           <TextBlock HorizontalAlignment="Center"
                      FontSize="15"
@@ -129,9 +131,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Border Background="#0B1117"
-          BorderBrush="#3A4A59"
-          BorderThickness="1">
+  <Border Background="#0B1117" BorderThickness="0">
     <ContentControl Content="{Binding}">
       <ContentControl.Style>
         <Style TargetType="ContentControl">
