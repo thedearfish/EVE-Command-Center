@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:EveCommandCenter.Presentation"
         xmlns:preview="clr-namespace:EveCommandCenter.Windows.Preview;assembly=EveCommandCenter.Windows"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         local:PreviewGroupingBehavior.IsEnabled="True"
         Title="{Binding DisplayName}"
         Width="320"
@@ -13,78 +14,30 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         ShowInTaskbar="False"
-        Background="Transparent"
+        Background="#05080C"
         Foreground="#FFFFFF"
         FontFamily="Segoe UI"
+        Loaded="OnPreviewWindowLoaded"
+        LocationChanged="OnPreviewWindowLocationChanged"
+        SizeChanged="OnPreviewWindowSizeChanged"
+        IsVisibleChanged="OnPreviewWindowVisibilityChanged"
+        StateChanged="OnPreviewWindowStateChanged"
         PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown"
         PreviewMouseMove="OnSurfacePreviewMouseMove"
         PreviewMouseLeftButtonUp="OnSurfacePreviewMouseLeftButtonUp"
         LostMouseCapture="OnSurfaceLostMouseCapture">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="0"
+                        ResizeBorderThickness="8"
+                        GlassFrameThickness="0"
+                        CornerRadius="0"
+                        UseAeroCaptionButtons="False" />
+  </shell:WindowChrome.WindowChrome>
+
   <Window.Resources>
-    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-
-    <Style x:Key="OverlayPrimaryText" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="White" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-      <Setter Property="Effect">
-        <Setter.Value>
-          <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="1" Color="Black" />
-        </Setter.Value>
-      </Setter>
-    </Style>
-
-    <Style x:Key="OverlaySecondaryText" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="#F2F6FA" />
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-      <Setter Property="Effect">
-        <Setter.Value>
-          <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="1" Color="Black" />
-        </Setter.Value>
-      </Setter>
-    </Style>
-
     <DataTemplate x:Key="StandardPreviewTemplate">
-      <Grid Background="Transparent" ClipToBounds="True">
+      <Grid Background="#05080C" ClipToBounds="True">
         <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
-
-        <StackPanel Margin="8,6,8,0"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
-                    MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
-                    Visibility="{Binding ShowHeader, RelativeSource={RelativeSource AncestorType={x:Type Window}}, Converter={StaticResource BooleanToVisibilityConverter}}">
-          <TextBlock Style="{StaticResource OverlayPrimaryText}"
-                     FontSize="14"
-                     Text="{Binding DisplayName}" />
-          <TextBlock Margin="0,1,0,0"
-                     Text="{Binding CurrentSystem}">
-            <TextBlock.Style>
-              <Style TargetType="TextBlock" BasedOn="{StaticResource OverlaySecondaryText}">
-                <Setter Property="Visibility" Value="Visible" />
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding CurrentSystem}" Value="">
-                    <Setter Property="Visibility" Value="Collapsed" />
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </TextBlock.Style>
-          </TextBlock>
-          <TextBlock Margin="0,1,0,0"
-                     Text="{Binding CustomLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}">
-            <TextBlock.Style>
-              <Style TargetType="TextBlock" BasedOn="{StaticResource OverlaySecondaryText}">
-                <Setter Property="Visibility" Value="Visible" />
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding CustomLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="">
-                    <Setter Property="Visibility" Value="Collapsed" />
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </TextBlock.Style>
-          </TextBlock>
-        </StackPanel>
-
         <TextBlock Margin="12"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
@@ -96,7 +49,7 @@
     </DataTemplate>
 
     <DataTemplate x:Key="ImageOnlyPreviewTemplate">
-      <Grid Background="Transparent" ClipToBounds="True">
+      <Grid Background="#05080C" ClipToBounds="True">
         <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
         <TextBlock Margin="12"
                    HorizontalAlignment="Center"
@@ -160,7 +113,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Border Background="Transparent" BorderThickness="0">
+  <Border Background="#05080C" BorderThickness="0" SnapsToDevicePixels="True">
     <ContentControl Content="{Binding}">
       <ContentControl.Style>
         <Style TargetType="ContentControl">
