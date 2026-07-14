@@ -1,4 +1,5 @@
 using EveCommandCenter.Application.Abstractions;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Core.Clients;
 using EveCommandCenter.Presentation;
 using EveCommandCenter.Windows.Activation;
@@ -22,6 +23,7 @@ public sealed class ClientNavigationController(
 
         if (clients.Count == 0)
         {
+            AppLog.Warning("Navigation", "Character switching requested, but no eligible EVE clients are available.");
             viewModel.SetSettingsResult("No logged-in EVE characters are available for switching.");
             return;
         }
@@ -40,9 +42,25 @@ public sealed class ClientNavigationController(
         }
 
         DetectedClientViewModel target = clients[targetIndex];
+        AppLog.Information(
+            "Navigation",
+            $"Character switch requested; direction={direction}; foreground=0x{foregroundWindow.Value:X}; " +
+            $"target={target.DisplayName}; targetHwnd=0x{target.SourceWindowId:X}.");
+
         var result = await activationService.ActivateAsync(new WindowId(target.SourceWindowId));
         viewModel.SetSettingsResult(result.IsSuccess
             ? $"Activated {target.DisplayName}."
             : result.Message ?? $"Could not activate {target.DisplayName}.");
+
+        if (result.IsSuccess)
+        {
+            AppLog.Information("Navigation", $"Character switch completed: {target.DisplayName}.");
+        }
+        else
+        {
+            AppLog.Warning(
+                "Navigation",
+                $"Character switch failed for {target.DisplayName}: {result.Message}");
+        }
     }
 }
