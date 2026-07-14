@@ -10,9 +10,10 @@ namespace EveCommandCenter.Presentation;
 
 public static class PreviewGroupingBehavior
 {
-    private const double SnapDistance = 16.0;
-    private const double MinimumOverlap = 24.0;
+    private const double SnapDistance = 28.0;
+    private const double MinimumOverlap = 8.0;
     private const double VisualJoinOverlap = 1.0;
+    private const double GeometryTolerance = 1.5;
     private static readonly TimeSpan SnapHoldDuration = TimeSpan.FromSeconds(1);
     private static readonly StringComparer NameComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly Dictionary<FloatingPreviewWindow, WindowEntry> Entries = [];
@@ -134,6 +135,7 @@ public static class PreviewGroupingBehavior
         }
 
         activeMove = CreateSession(primary);
+        AppLog.Debug("Grouping", $"Move/resize session started for {primary.CharacterName}.");
     }
 
     private static MoveSession CreateSession(WindowEntry primary, Size? previousPrimarySize = null)
@@ -192,6 +194,11 @@ public static class PreviewGroupingBehavior
             return;
         }
 
+        if (!PositionChanged(activeMove.PrimaryStart, current))
+        {
+            return;
+        }
+
         activeMove.IsMoving = true;
         double deltaX = current.Left - activeMove.PrimaryStart.Left;
         double deltaY = current.Top - activeMove.PrimaryStart.Top;
@@ -220,6 +227,12 @@ public static class PreviewGroupingBehavior
             SuppressedWindowEvents.Contains(window) ||
             !Entries.TryGetValue(window, out WindowEntry? primary) ||
             !IsGrouped(primary.CharacterName))
+        {
+            return;
+        }
+
+        if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) <= GeometryTolerance &&
+            Math.Abs(e.NewSize.Height - e.PreviousSize.Height) <= GeometryTolerance)
         {
             return;
         }
@@ -263,25 +276,17 @@ public static class PreviewGroupingBehavior
             return;
         }
 
-        MoveSession? session = activeMove?.Primary.Window == window
-            ? activeMove
-            : IsGrouped(primary.CharacterName)
-                ? CreateSession(primary)
-                : null;
-
-        if (session is not null && IsGrouped(primary.CharacterName))
+        if (IsGrouped(primary.CharacterName))
         {
+            MoveSession session = activeMove?.Primary.Window == window
+                ? activeMove
+                : CreateSession(primary);
             SynchronizeGroupResize(session, new Rect(e.Left, e.Top, e.Width, e.Height));
             PersistOpenPositions(session.Members);
         }
         else
         {
             PersistOpenPositions([primary]);
-        }
-
-        if (activeMove?.Primary.Window == window)
-        {
-            activeMove = null;
         }
 
         SaveStore();
@@ -299,24 +304,28 @@ public static class PreviewGroupingBehavior
 
         MoveSession session = activeMove;
         activeMove = null;
+        Rect finalBounds = CaptureBounds(window);
+        bool actuallyResized = SizeChanged(session.PrimaryStart, finalBounds);
+        bool actuallyMoved = PositionChanged(session.PrimaryStart, finalBounds);
 
-        if (session.IsResize)
+        if (actuallyResized)
         {
-            SynchronizeGroupResize(session, CaptureBounds(window));
+            session.IsResize = true;
+            SynchronizeGroupResize(session, finalBounds);
             PersistOpenPositions(session.Members);
             SaveStore();
+            AppLog.Debug("Grouping", $"Grouped resize completed for {session.Primary.CharacterName}.");
             return;
         }
 
-        if (!session.IsMoving)
+        if (!actuallyMoved && !session.IsMoving)
         {
             return;
         }
 
+        session.IsMoving = true;
         UpdateSnapCandidate(session);
-        if (session.ArmedCandidate is not null &&
-            session.CurrentCandidate is not null &&
-            session.ArmedCandidate.Key == session.CurrentCandidate.Key)
+        if (session.CurrentCandidate is not null)
         {
             ApplySnapAndMerge(session, session.CurrentCandidate);
         }
@@ -328,10 +337,18 @@ public static class PreviewGroupingBehavior
 
     private static void OnHoldTimerTick(object? sender, EventArgs e)
     {
-        if (activeMove is null ||
-            !activeMove.IsMoving ||
-            activeMove.IsResize ||
-            Mouse.LeftButton != MouseButtonState.Pressed)
+        if (activeMove is null)
+        {
+            return;
+        }
+
+        if (Mouse.LeftButton != MouseButtonState.Pressed)
+        {
+            activeMove = null;
+            return;
+        }
+
+        if (!activeMove.IsMoving || activeMove.IsResize)
         {
             return;
         }
@@ -476,35 +493,15 @@ public static class PreviewGroupingBehavior
                 ? movingGroup
                 : Guid.NewGuid().ToString("N");
 
-        if (!string.IsNullOrWhiteSpace(movingGroup) && !NameComparer.Equals(movingGroup, newGroup))
-        {
-            foreach (PersistedWindowState state in Persisted.Values.Where(state =>
-                         NameComparer.Equals(state.GroupId, movingGroup)))
-            {
-                state.GroupId = newGroup;
-            }
-        }
+        MergePersistedGroup(movingGroup, newGroup);
+        MergePersistedGroup(targetGroup, newGroup);
 
         foreach (WindowEntry member in session.Members)
         {
             GetOrCreateState(member.CharacterName).GroupId = newGroup;
         }
 
-        string candidateGroup = GetGroupId(candidate.Target.CharacterName);
-        if (string.IsNullOrWhiteSpace(candidateGroup))
-        {
-            GetOrCreateState(candidate.Target.CharacterName).GroupId = newGroup;
-        }
-        else
-        {
-            foreach (PersistedWindowState state in Persisted.Values.Where(state =>
-                         NameComparer.Equals(state.GroupId, candidateGroup)))
-            {
-                state.GroupId = newGroup;
-            }
-        }
-
-        PersistOpenPositions(session.Members);
+        GetOrCreateState(candidate.Target.CharacterName).GroupId = newGroup;
         PersistOpenPositions(Entries.Values.Where(entry =>
             NameComparer.Equals(GetGroupId(entry.CharacterName), newGroup)));
 
@@ -512,6 +509,20 @@ public static class PreviewGroupingBehavior
             "Grouping",
             $"Preview group created/merged: {session.Primary.CharacterName} + " +
             $"{candidate.Target.CharacterName}; group={newGroup}.");
+    }
+
+    private static void MergePersistedGroup(string sourceGroup, string destinationGroup)
+    {
+        if (string.IsNullOrWhiteSpace(sourceGroup) || NameComparer.Equals(sourceGroup, destinationGroup))
+        {
+            return;
+        }
+
+        foreach (PersistedWindowState state in Persisted.Values.Where(state =>
+                     NameComparer.Equals(state.GroupId, sourceGroup)))
+        {
+            state.GroupId = destinationGroup;
+        }
     }
 
     private static void InstallContextMenu(WindowEntry entry)
@@ -722,9 +733,13 @@ public static class PreviewGroupingBehavior
     private static double Overlap(double firstStart, double firstEnd, double secondStart, double secondEnd) =>
         Math.Max(0, Math.Min(firstEnd, secondEnd) - Math.Max(firstStart, secondStart));
 
+    private static bool PositionChanged(Rect before, Rect after) =>
+        Math.Abs(before.Left - after.Left) > GeometryTolerance ||
+        Math.Abs(before.Top - after.Top) > GeometryTolerance;
+
     private static bool SizeChanged(Rect before, Rect after) =>
-        Math.Abs(before.Width - after.Width) > 0.5 ||
-        Math.Abs(before.Height - after.Height) > 0.5;
+        Math.Abs(before.Width - after.Width) > GeometryTolerance ||
+        Math.Abs(before.Height - after.Height) > GeometryTolerance;
 
     private sealed record WindowEntry(FloatingPreviewWindow Window, string CharacterName);
 
