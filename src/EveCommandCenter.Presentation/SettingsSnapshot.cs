@@ -9,4 +9,5 @@ public sealed record SettingsSnapshot(
     double PreviewOpacity,
     string NextCharacterHotkey,
     string PreviousCharacterHotkey,
-    string TogglePreviewsHotkey);
+    string TogglePreviewsHotkey,
+    IReadOnlyList<CharacterPreviewProfileSnapshot> CharacterProfiles);
