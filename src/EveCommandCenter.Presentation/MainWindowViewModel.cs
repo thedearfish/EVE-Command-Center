@@ -9,6 +9,8 @@ namespace EveCommandCenter.Presentation;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
+    private static readonly StringComparer CharacterNameComparer = StringComparer.OrdinalIgnoreCase;
+
     private readonly IWindowSnapshotSource windowSnapshotSource;
     private readonly EveWindowClassifier classifier;
     private readonly DispatcherTimer timer;
@@ -42,6 +44,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         previousCharacterHotkey = settings.PreviousCharacterHotkey;
         togglePreviewsHotkey = settings.TogglePreviewsHotkey;
 
+        foreach (CharacterPreviewProfileSnapshot profile in settings.CharacterProfiles
+                     .Where(profile => !string.IsNullOrWhiteSpace(profile.CharacterName))
+                     .GroupBy(profile => profile.CharacterName.Trim(), CharacterNameComparer)
+                     .Select(group => group.First())
+                     .OrderBy(profile => profile.CharacterName, CharacterNameComparer))
+        {
+            AddProfile(new CharacterPreviewProfileViewModel(profile));
+        }
+
         SaveCommand = new RelayCommand(() => SettingsSaveRequested?.Invoke(this, EventArgs.Empty));
 
         timer = new DispatcherTimer(DispatcherPriority.Background)
@@ -58,9 +69,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event EventHandler? SettingsSaveRequested;
 
+    public event EventHandler? SettingsPersistRequested;
+
     public string Title => "EVE Command Center — Settings";
 
     public ObservableCollection<DetectedClientViewModel> Clients { get; } = [];
+
+    public ObservableCollection<CharacterPreviewProfileViewModel> CharacterProfiles { get; } = [];
+
+    public IReadOnlyList<PreviewModeOption> PreviewModeOptions { get; } =
+    [
+        new(
+            PreviewContentMode.Standard,
+            "Standard",
+            "Live DWM image with character name and optional custom label."),
+        new(
+            PreviewContentMode.ImageOnly,
+            "Image only",
+            "Live DWM image without a header."),
+        new(
+            PreviewContentMode.TextOnly,
+            "Name only (low load)",
+            "No DWM thumbnail. Shows the character name and optional custom label on a compact gray tile."),
+    ];
 
     public IEnumerable<DetectedClientViewModel> PreviewClients => Clients.Where(client => client.IsPreviewEligible);
 
@@ -152,9 +183,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PreviewOpacity,
             NextCharacterHotkey,
             PreviousCharacterHotkey,
-            TogglePreviewsHotkey);
+            TogglePreviewsHotkey,
+            CharacterProfiles.Select(profile => profile.CreateSnapshot()).ToArray());
 
     public void SetSettingsResult(string message) => StatusMessage = message;
+
+    public CharacterPreviewProfileViewModel GetOrCreateCharacterProfile(string characterName)
+    {
+        string normalizedName = characterName.Trim();
+        CharacterPreviewProfileViewModel? existing = CharacterProfiles.FirstOrDefault(profile =>
+            CharacterNameComparer.Equals(profile.CharacterName, normalizedName));
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var created = new CharacterPreviewProfileViewModel(new CharacterPreviewProfileSnapshot(
+            normalizedName,
+            string.Empty,
+            PreviewContentMode.Standard,
+            null,
+            null,
+            null,
+            null));
+
+        AddProfile(created);
+        SortProfiles();
+        SettingsPersistRequested?.Invoke(this, EventArgs.Empty);
+        return created;
+    }
+
+    public void UpdateCharacterLayout(
+        string characterName,
+        double left,
+        double top,
+        double width,
+        double height)
+    {
+        CharacterPreviewProfileViewModel profile = GetOrCreateCharacterProfile(characterName);
+        profile.UpdateLayout(left, top, width, height);
+    }
 
     public void Refresh()
     {
@@ -162,6 +231,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             IReadOnlyList<WindowCandidate> windows = windowSnapshotSource.Capture();
             var seenWindowIds = new HashSet<long>();
+
+            foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
+            {
+                profile.IsDetected = false;
+            }
 
             foreach (WindowCandidate window in windows)
             {
@@ -175,6 +249,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 seenWindowIds.Add(sourceWindowId);
                 bool isCharacter = classification.Kind == EveWindowKind.Character;
                 string state = isCharacter ? "Ready" : "Character Selection";
+
+                if (isCharacter)
+                {
+                    GetOrCreateCharacterProfile(classification.DisplayName).IsDetected = true;
+                }
 
                 DetectedClientViewModel? existing = Clients.FirstOrDefault(client =>
                     client.SourceWindowId == sourceWindowId);
@@ -234,12 +313,50 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         disposed = true;
         timer.Stop();
         timer.Tick -= OnTimerTick;
+
+        foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
+        {
+            profile.PropertyChanged -= OnProfilePropertyChanged;
+        }
+    }
+
+    private void AddProfile(CharacterPreviewProfileViewModel profile)
+    {
+        profile.PropertyChanged += OnProfilePropertyChanged;
+        CharacterProfiles.Add(profile);
+    }
+
+    private void OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(CharacterPreviewProfileViewModel.CustomLabel)
+            or nameof(CharacterPreviewProfileViewModel.ContentMode)
+            or nameof(CharacterPreviewProfileViewModel.HasSavedBounds))
+        {
+            SettingsPersistRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void SortProfiles()
+    {
+        List<CharacterPreviewProfileViewModel> ordered = CharacterProfiles
+            .OrderBy(profile => profile.CharacterName, CharacterNameComparer)
+            .ToList();
+
+        for (int targetIndex = 0; targetIndex < ordered.Count; targetIndex++)
+        {
+            CharacterPreviewProfileViewModel expected = ordered[targetIndex];
+            int currentIndex = CharacterProfiles.IndexOf(expected);
+            if (currentIndex != targetIndex)
+            {
+                CharacterProfiles.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void SortClients()
     {
         List<DetectedClientViewModel> ordered = Clients
-            .OrderBy(client => client.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(client => client.DisplayName, CharacterNameComparer)
             .ToList();
 
         for (int targetIndex = 0; targetIndex < ordered.Count; targetIndex++)
