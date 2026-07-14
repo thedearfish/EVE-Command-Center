@@ -286,11 +286,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var seenWindowIds = new HashSet<long>();
-
-            foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
-            {
-                profile.IsDetected = false;
-            }
+            var detectedCharacterNames = new HashSet<string>(CharacterNameComparer);
 
             foreach (ClassifiedWindow item in detectedWindows)
             {
@@ -303,7 +299,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
                 if (isCharacter)
                 {
-                    GetOrCreateCharacterProfile(classification.DisplayName).IsDetected = true;
+                    detectedCharacterNames.Add(classification.DisplayName);
+                    _ = GetOrCreateCharacterProfile(classification.DisplayName);
                 }
 
                 DetectedClientViewModel? existing = Clients.FirstOrDefault(client =>
@@ -342,6 +339,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 {
                     Clients.RemoveAt(index);
                 }
+            }
+
+            foreach (CharacterPreviewProfileViewModel profile in CharacterProfiles)
+            {
+                profile.IsDetected = detectedCharacterNames.Contains(profile.CharacterName);
             }
 
             SortClients();
