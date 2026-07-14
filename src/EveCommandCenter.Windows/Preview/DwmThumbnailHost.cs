@@ -31,7 +31,6 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += OnSizeChanged;
-        LayoutUpdated += OnLayoutUpdated;
     }
 
     public long SourceWindowId
@@ -57,7 +56,6 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
         SizeChanged -= OnSizeChanged;
-        LayoutUpdated -= OnLayoutUpdated;
         DisposeSession();
     }
 
@@ -76,8 +74,6 @@ public sealed class DwmThumbnailHost : FrameworkElement, IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs e) => DisposeSession();
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => UpdateThumbnail();
-
-    private void OnLayoutUpdated(object? sender, EventArgs e) => UpdateThumbnail();
 
     private void RecreateSession()
     {
