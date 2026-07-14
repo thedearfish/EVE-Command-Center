@@ -2,8 +2,10 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using EveCommandCenter.App.Diagnostics;
 using EveCommandCenter.App.Shell;
 using EveCommandCenter.App.Startup;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Application.Discovery;
 using EveCommandCenter.Infrastructure.Settings;
 using EveCommandCenter.Presentation;
@@ -22,6 +24,8 @@ public partial class App : System.Windows.Application
     private GlobalHotkeyService? hotkeyService;
     private MainWindowViewModel? viewModel;
     private JsonSettingsStore<AppSettings>? settingsStore;
+    private SerializedSettingsWriter? settingsWriter;
+    private UiDispatcherWatchdog? uiWatchdog;
 
     public App()
     {
@@ -42,7 +46,17 @@ public partial class App : System.Windows.Application
             base.OnStartup(e);
             WriteLog("WPF base startup completed.");
 
+            InitializeRuntimeDiagnostics();
+            AppLog.Information(
+                "Application",
+                $"Startup begin; baseDirectory={AppContext.BaseDirectory}; " +
+                $"os={Environment.OSVersion}; 64Bit={Environment.Is64BitProcess}.");
+
+            uiWatchdog = new UiDispatcherWatchdog(Dispatcher);
+            uiWatchdog.Start();
+
             settingsStore = new JsonSettingsStore<AppSettings>(AppDataPathProvider.GetSettingsPath());
+            settingsWriter = new SerializedSettingsWriter(settingsStore);
             AppSettings settings = LoadSettings();
 
             var source = new Win32WindowSnapshotSource();
@@ -51,6 +65,7 @@ public partial class App : System.Windows.Application
             viewModel.SettingsSaveRequested += OnSettingsSaveRequested;
             viewModel.SettingsPersistRequested += OnSettingsPersistRequested;
             WriteLog("Settings view model and EVE monitor created.");
+            AppLog.Information("Application", "Settings view model and EVE client monitor created.");
 
             var activationService = new Win32WindowActivationService();
             previewManager = new FloatingPreviewManager(viewModel, activationService);
@@ -69,6 +84,7 @@ public partial class App : System.Windows.Application
 
             var settingsWindow = new MainWindow(viewModel);
             WriteLog("Settings window created.");
+            AppLog.Information("Application", "Settings window created.");
 
             MainWindow = settingsWindow;
             lifecycle = new ApplicationLifecycleController(
@@ -80,9 +96,12 @@ public partial class App : System.Windows.Application
             bool forceSettingsWindow = ShouldShowSettingsWindow(e.Args);
             lifecycle.Start(forceSettingsWindow);
 
-            WriteLog(forceSettingsWindow
+            string startupMessage = forceSettingsWindow
                 ? "Application started in tray mode with settings explicitly requested."
-                : "Application started in tray mode.");
+                : "Application started in tray mode.";
+            WriteLog(startupMessage);
+            AppLog.Information("Application", startupMessage);
+            AppLog.SetCurrentOperation("idle");
         }
         catch (Exception exception)
         {
@@ -101,57 +120,86 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        AppLog.SetCurrentOperation("application shutdown");
+        AppLog.Information("Application", $"Application exit started. Code: {e.ApplicationExitCode}.");
+
         if (viewModel is not null)
         {
             viewModel.SettingsSaveRequested -= OnSettingsSaveRequested;
             viewModel.SettingsPersistRequested -= OnSettingsPersistRequested;
-            TrySaveSettings();
         }
-
-        hotkeyService?.Dispose();
-        hotkeyService = null;
 
         previewManager?.Dispose();
         previewManager = null;
 
+        SaveFinalSettings();
+
+        hotkeyService?.Dispose();
+        hotkeyService = null;
+
         lifecycle?.Dispose();
         lifecycle = null;
 
+        settingsWriter?.Dispose();
+        settingsWriter = null;
+
+        uiWatchdog?.Dispose();
+        uiWatchdog = null;
+
         WriteLog($"Application exit. Code: {e.ApplicationExitCode}.");
+        AppLog.Information("Application", $"Application exit completed. Code: {e.ApplicationExitCode}.");
+        AppLog.Shutdown();
         base.OnExit(e);
     }
 
-    private void OnSettingsSaveRequested(object? sender, EventArgs e)
+    private async void OnSettingsSaveRequested(object? sender, EventArgs e)
     {
-        if (viewModel is null || settingsStore is null)
+        if (viewModel is null || settingsWriter is null)
         {
             return;
         }
 
-        try
+        AppSettings settings = CreatePersistedSettings(viewModel.CreateSettingsSnapshot());
+        bool saved = await settingsWriter.SaveAsync(settings, "manual settings save");
+
+        if (!saved)
         {
-            AppSettings settings = CreatePersistedSettings(viewModel.CreateSettingsSnapshot());
-            settingsStore.SaveAsync(settings).GetAwaiter().GetResult();
-            ApplyHotkeys(reportSuccess: true);
+            viewModel.SetSettingsResult("Could not save settings. See runtime.log for details.");
+            return;
         }
-        catch (Exception exception)
-        {
-            WriteLog("Settings save failed.", exception);
-            viewModel.SetSettingsResult($"Could not save settings: {exception.Message}");
-        }
+
+        ApplyHotkeys(reportSuccess: true);
     }
 
-    private void OnSettingsPersistRequested(object? sender, EventArgs e) => TrySaveSettings();
+    private async void OnSettingsPersistRequested(object? sender, EventArgs e)
+    {
+        if (viewModel is null || settingsWriter is null)
+        {
+            return;
+        }
+
+        AppSettings settings = CreatePersistedSettings(viewModel.CreateSettingsSnapshot());
+        _ = await settingsWriter.SaveAsync(settings, "automatic character layout/profile update");
+    }
 
     private AppSettings LoadSettings()
     {
         try
         {
-            return settingsStore!.LoadAsync().GetAwaiter().GetResult();
+            string settingsPath = AppDataPathProvider.GetSettingsPath();
+            bool interruptedSavePresent = File.Exists(settingsPath + ".tmp");
+            AppLog.Information(
+                "Settings",
+                $"Loading settings from {settingsPath}; interruptedSavePresent={interruptedSavePresent}.");
+
+            AppSettings settings = settingsStore!.LoadAsync().GetAwaiter().GetResult();
+            AppLog.Information("Settings", "Settings loaded successfully.");
+            return settings;
         }
         catch (Exception exception)
         {
             WriteLog("Settings load failed. Defaults will be used.", exception);
+            AppLog.Error("Settings", "Settings load failed. Defaults will be used.", exception);
             return new AppSettings();
         }
     }
@@ -178,23 +226,30 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void TrySaveSettings()
+    private void SaveFinalSettings()
     {
-        if (viewModel is null || settingsStore is null)
+        if (viewModel is null || settingsWriter is null)
         {
             return;
         }
 
         try
         {
-            settingsStore
-                .SaveAsync(CreatePersistedSettings(viewModel.CreateSettingsSnapshot()))
+            AppSettings settings = CreatePersistedSettings(viewModel.CreateSettingsSnapshot());
+            bool saved = settingsWriter
+                .SaveAsync(settings, "application exit")
                 .GetAwaiter()
                 .GetResult();
+
+            if (!saved)
+            {
+                WriteLog("Final settings save failed. See runtime.log.");
+            }
         }
         catch (Exception exception)
         {
-            WriteLog("Automatic settings save failed.", exception);
+            WriteLog("Final settings save failed.", exception);
+            AppLog.Error("Settings", "Final settings save failed.", exception);
         }
     }
 
@@ -263,9 +318,23 @@ public partial class App : System.Windows.Application
             },
         };
 
+    private void InitializeRuntimeDiagnostics()
+    {
+        try
+        {
+            AppLog.Initialize(new FileRuntimeLogger());
+            WriteLog($"Runtime log initialized: {AppLog.LogFilePath}");
+        }
+        catch (Exception exception)
+        {
+            WriteLog("Runtime logging initialization failed.", exception);
+        }
+    }
+
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         WriteLog("Unhandled dispatcher exception.", e.Exception);
+        AppLog.Error("Application", "Unhandled dispatcher exception.", e.Exception);
         ShowError("EVE Command Center encountered an unexpected error.", e.Exception);
         e.Handled = true;
 
@@ -282,11 +351,16 @@ public partial class App : System.Windows.Application
     private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
     {
         WriteLog($"Unhandled AppDomain exception. Terminating: {e.IsTerminating}.", e.ExceptionObject as Exception);
+        AppLog.Error(
+            "Application",
+            $"Unhandled AppDomain exception. Terminating: {e.IsTerminating}.",
+            e.ExceptionObject as Exception);
     }
 
     private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         WriteLog("Unobserved task exception.", e.Exception);
+        AppLog.Error("Application", "Unobserved task exception.", e.Exception);
         e.SetObserved();
     }
 
@@ -308,13 +382,15 @@ public partial class App : System.Windows.Application
     private static void ReportFatalStartupError(Exception exception)
     {
         WriteLog("Fatal startup error.", exception);
+        AppLog.Error("Application", "Fatal startup error.", exception);
         ShowError("EVE Command Center could not start.", exception);
     }
 
     private static void ShowError(string title, Exception exception)
     {
+        string diagnosticPath = AppLog.LogFilePath ?? LogPath;
         string message = $"{exception.GetType().FullName}: {exception.Message}\n\n" +
-                         $"Diagnostic log:\n{LogPath}";
+                         $"Diagnostic log:\n{diagnosticPath}";
 
         try
         {
