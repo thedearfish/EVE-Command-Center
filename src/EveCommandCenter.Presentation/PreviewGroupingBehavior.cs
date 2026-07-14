@@ -12,12 +12,12 @@ public static class PreviewGroupingBehavior
 {
     private const double SnapDistance = 16.0;
     private const double MinimumOverlap = 24.0;
+    private const double VisualJoinOverlap = 1.0;
     private static readonly TimeSpan SnapHoldDuration = TimeSpan.FromSeconds(1);
     private static readonly StringComparer NameComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly Dictionary<FloatingPreviewWindow, WindowEntry> Entries = [];
-    private static readonly HashSet<FloatingPreviewWindow> SuppressedLocationEvents = [];
-    private static readonly Dictionary<string, PersistedWindowState> Persisted =
-        new(NameComparer);
+    private static readonly HashSet<FloatingPreviewWindow> SuppressedWindowEvents = [];
+    private static readonly Dictionary<string, PersistedWindowState> Persisted = new(NameComparer);
     private static readonly DispatcherTimer HoldTimer = new(DispatcherPriority.Input)
     {
         Interval = TimeSpan.FromMilliseconds(100),
@@ -47,25 +47,24 @@ public static class PreviewGroupingBehavior
 
     private static void OnIsEnabledChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
     {
-        if (dependencyObject is not FloatingPreviewWindow window)
+        if (dependencyObject is not FloatingPreviewWindow window || !(bool)e.NewValue)
         {
             return;
         }
 
-        if ((bool)e.NewValue)
-        {
-            window.Loaded += OnWindowLoaded;
-            window.Closed += OnWindowClosed;
-            window.LocationChanged += OnWindowLocationChanged;
-            window.AddHandler(
-                UIElement.PreviewMouseLeftButtonDownEvent,
-                new MouseButtonEventHandler(OnWindowMouseLeftButtonDown),
-                handledEventsToo: true);
-            window.AddHandler(
-                UIElement.PreviewMouseLeftButtonUpEvent,
-                new MouseButtonEventHandler(OnWindowMouseLeftButtonUp),
-                handledEventsToo: true);
-        }
+        window.Loaded += OnWindowLoaded;
+        window.Closed += OnWindowClosed;
+        window.LocationChanged += OnWindowLocationChanged;
+        window.SizeChanged += OnWindowSizeChanged;
+        window.LayoutCommitted += OnWindowLayoutCommitted;
+        window.AddHandler(
+            UIElement.PreviewMouseLeftButtonDownEvent,
+            new MouseButtonEventHandler(OnWindowMouseLeftButtonDown),
+            handledEventsToo: true);
+        window.AddHandler(
+            UIElement.PreviewMouseLeftButtonUpEvent,
+            new MouseButtonEventHandler(OnWindowMouseLeftButtonUp),
+            handledEventsToo: true);
     }
 
     private static void OnWindowLoaded(object sender, RoutedEventArgs e)
@@ -87,7 +86,7 @@ public static class PreviewGroupingBehavior
         if (Persisted.TryGetValue(characterName, out PersistedWindowState? saved) &&
             saved.Width >= window.MinWidth && saved.Height >= window.MinHeight)
         {
-            window.ApplyBounds(saved.Left, saved.Top, saved.Width, saved.Height);
+            ApplyBoundsSuppressed(window, new Rect(saved.Left, saved.Top, saved.Width, saved.Height));
         }
 
         UpdateContextMenus();
@@ -106,8 +105,14 @@ public static class PreviewGroupingBehavior
             return;
         }
 
+        window.Loaded -= OnWindowLoaded;
+        window.Closed -= OnWindowClosed;
+        window.LocationChanged -= OnWindowLocationChanged;
+        window.SizeChanged -= OnWindowSizeChanged;
+        window.LayoutCommitted -= OnWindowLayoutCommitted;
+
         Entries.Remove(window);
-        SuppressedLocationEvents.Remove(window);
+        SuppressedWindowEvents.Remove(window);
         if (activeMove?.Primary.Window == window)
         {
             activeMove = null;
@@ -128,6 +133,36 @@ public static class PreviewGroupingBehavior
             return;
         }
 
+        activeMove = CreateSession(primary);
+    }
+
+    private static MoveSession CreateSession(WindowEntry primary, Size? previousPrimarySize = null)
+    {
+        WindowEntry[] members = GetOpenGroupMembers(primary);
+        var startingBounds = members.ToDictionary(
+            entry => entry,
+            entry => CaptureBounds(entry.Window));
+
+        Rect primaryStart = startingBounds[primary];
+        if (previousPrimarySize is { Width: > 0, Height: > 0 } previous)
+        {
+            primaryStart = new Rect(primaryStart.Left, primaryStart.Top, previous.Width, previous.Height);
+            startingBounds[primary] = primaryStart;
+        }
+
+        double stepX = Math.Max(1.0, primaryStart.Width - VisualJoinOverlap);
+        double stepY = Math.Max(1.0, primaryStart.Height - VisualJoinOverlap);
+        var relativeOffsets = startingBounds.ToDictionary(
+            pair => pair.Key,
+            pair => new Point(
+                (pair.Value.Left - primaryStart.Left) / stepX,
+                (pair.Value.Top - primaryStart.Top) / stepY));
+
+        return new MoveSession(primary, members, startingBounds, relativeOffsets, primaryStart);
+    }
+
+    private static WindowEntry[] GetOpenGroupMembers(WindowEntry primary)
+    {
         string groupId = GetGroupId(primary.CharacterName);
         WindowEntry[] members = string.IsNullOrWhiteSpace(groupId)
             ? [primary]
@@ -135,26 +170,13 @@ public static class PreviewGroupingBehavior
                 .Where(entry => NameComparer.Equals(GetGroupId(entry.CharacterName), groupId))
                 .ToArray();
 
-        if (members.Length == 0)
-        {
-            members = [primary];
-        }
-
-        var startingBounds = members.ToDictionary(
-            entry => entry,
-            entry => CaptureBounds(entry.Window));
-
-        activeMove = new MoveSession(
-            primary,
-            members,
-            startingBounds,
-            startingBounds[primary]);
+        return members.Length == 0 ? [primary] : members;
     }
 
     private static void OnWindowLocationChanged(object? sender, EventArgs e)
     {
         if (sender is not FloatingPreviewWindow window ||
-            SuppressedLocationEvents.Contains(window) ||
+            SuppressedWindowEvents.Contains(window) ||
             activeMove is null ||
             activeMove.Primary.Window != window ||
             Mouse.LeftButton != MouseButtonState.Pressed)
@@ -163,10 +185,10 @@ public static class PreviewGroupingBehavior
         }
 
         Rect current = CaptureBounds(window);
-        if (Math.Abs(current.Width - activeMove.PrimaryStart.Width) > 0.5 ||
-            Math.Abs(current.Height - activeMove.PrimaryStart.Height) > 0.5)
+        if (SizeChanged(activeMove.PrimaryStart, current))
         {
             activeMove.IsResize = true;
+            SynchronizeGroupResize(activeMove, current);
             return;
         }
 
@@ -192,6 +214,79 @@ public static class PreviewGroupingBehavior
         UpdateSnapCandidate(activeMove);
     }
 
+    private static void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not FloatingPreviewWindow window ||
+            SuppressedWindowEvents.Contains(window) ||
+            !Entries.TryGetValue(window, out WindowEntry? primary) ||
+            !IsGrouped(primary.CharacterName))
+        {
+            return;
+        }
+
+        if (activeMove is null || activeMove.Primary.Window != window)
+        {
+            activeMove = CreateSession(primary, e.PreviousSize);
+        }
+
+        activeMove.IsResize = true;
+        SynchronizeGroupResize(activeMove, CaptureBounds(window));
+    }
+
+    private static void SynchronizeGroupResize(MoveSession session, Rect primaryBounds)
+    {
+        double stepX = Math.Max(1.0, primaryBounds.Width - VisualJoinOverlap);
+        double stepY = Math.Max(1.0, primaryBounds.Height - VisualJoinOverlap);
+
+        foreach (WindowEntry member in session.Members)
+        {
+            if (ReferenceEquals(member, session.Primary))
+            {
+                continue;
+            }
+
+            Point offset = session.RelativeOffsets[member];
+            ApplyBoundsSuppressed(member.Window, new Rect(
+                primaryBounds.Left + (offset.X * stepX),
+                primaryBounds.Top + (offset.Y * stepY),
+                primaryBounds.Width,
+                primaryBounds.Height));
+        }
+    }
+
+    private static void OnWindowLayoutCommitted(object? sender, PreviewWindowLayoutChangedEventArgs e)
+    {
+        if (sender is not FloatingPreviewWindow window ||
+            SuppressedWindowEvents.Contains(window) ||
+            !Entries.TryGetValue(window, out WindowEntry? primary))
+        {
+            return;
+        }
+
+        MoveSession? session = activeMove?.Primary.Window == window
+            ? activeMove
+            : IsGrouped(primary.CharacterName)
+                ? CreateSession(primary)
+                : null;
+
+        if (session is not null && IsGrouped(primary.CharacterName))
+        {
+            SynchronizeGroupResize(session, new Rect(e.Left, e.Top, e.Width, e.Height));
+            PersistOpenPositions(session.Members);
+        }
+        else
+        {
+            PersistOpenPositions([primary]);
+        }
+
+        if (activeMove?.Primary.Window == window)
+        {
+            activeMove = null;
+        }
+
+        SaveStore();
+    }
+
     private static void OnWindowMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FloatingPreviewWindow window ||
@@ -205,7 +300,15 @@ public static class PreviewGroupingBehavior
         MoveSession session = activeMove;
         activeMove = null;
 
-        if (session.IsResize || !session.IsMoving)
+        if (session.IsResize)
+        {
+            SynchronizeGroupResize(session, CaptureBounds(window));
+            PersistOpenPositions(session.Members);
+            SaveStore();
+            return;
+        }
+
+        if (!session.IsMoving)
         {
             return;
         }
@@ -298,14 +401,34 @@ public static class PreviewGroupingBehavior
 
             if (verticalOverlap >= MinimumOverlap)
             {
-                ConsiderCandidate(ref best, target, "right-to-left", targetBounds.Left - movingBounds.Right, 0);
-                ConsiderCandidate(ref best, target, "left-to-right", targetBounds.Right - movingBounds.Left, 0);
+                ConsiderCandidate(
+                    ref best,
+                    target,
+                    "right-to-left",
+                    targetBounds.Left - movingBounds.Right + VisualJoinOverlap,
+                    0);
+                ConsiderCandidate(
+                    ref best,
+                    target,
+                    "left-to-right",
+                    targetBounds.Right - movingBounds.Left - VisualJoinOverlap,
+                    0);
             }
 
             if (horizontalOverlap >= MinimumOverlap)
             {
-                ConsiderCandidate(ref best, target, "bottom-to-top", 0, targetBounds.Top - movingBounds.Bottom);
-                ConsiderCandidate(ref best, target, "top-to-bottom", 0, targetBounds.Bottom - movingBounds.Top);
+                ConsiderCandidate(
+                    ref best,
+                    target,
+                    "bottom-to-top",
+                    0,
+                    targetBounds.Top - movingBounds.Bottom + VisualJoinOverlap);
+                ConsiderCandidate(
+                    ref best,
+                    target,
+                    "top-to-bottom",
+                    0,
+                    targetBounds.Bottom - movingBounds.Top - VisualJoinOverlap);
             }
         }
 
@@ -567,14 +690,14 @@ public static class PreviewGroupingBehavior
 
     private static void ApplyBoundsSuppressed(FloatingPreviewWindow window, Rect bounds)
     {
-        SuppressedLocationEvents.Add(window);
+        SuppressedWindowEvents.Add(window);
         try
         {
             window.ApplyBounds(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
         }
         finally
         {
-            SuppressedLocationEvents.Remove(window);
+            SuppressedWindowEvents.Remove(window);
         }
     }
 
@@ -599,17 +722,23 @@ public static class PreviewGroupingBehavior
     private static double Overlap(double firstStart, double firstEnd, double secondStart, double secondEnd) =>
         Math.Max(0, Math.Min(firstEnd, secondEnd) - Math.Max(firstStart, secondStart));
 
+    private static bool SizeChanged(Rect before, Rect after) =>
+        Math.Abs(before.Width - after.Width) > 0.5 ||
+        Math.Abs(before.Height - after.Height) > 0.5;
+
     private sealed record WindowEntry(FloatingPreviewWindow Window, string CharacterName);
 
     private sealed class MoveSession(
         WindowEntry primary,
         WindowEntry[] members,
         Dictionary<WindowEntry, Rect> startingBounds,
+        Dictionary<WindowEntry, Point> relativeOffsets,
         Rect primaryStart)
     {
         public WindowEntry Primary { get; } = primary;
         public WindowEntry[] Members { get; } = members;
         public Dictionary<WindowEntry, Rect> StartingBounds { get; } = startingBounds;
+        public Dictionary<WindowEntry, Point> RelativeOffsets { get; } = relativeOffsets;
         public Rect PrimaryStart { get; } = primaryStart;
         public bool IsMoving { get; set; }
         public bool IsResize { get; set; }
