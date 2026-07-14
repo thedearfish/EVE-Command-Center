@@ -48,8 +48,6 @@ public sealed record CharacterPreviewSettings
 
     public string ActivationHotkey { get; init; } = string.Empty;
 
-    public string GroupId { get; init; } = string.Empty;
-
     public double? Left { get; init; }
 
     public double? Top { get; init; }
