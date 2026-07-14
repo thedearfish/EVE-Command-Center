@@ -365,7 +365,8 @@ public partial class FloatingPreviewWindow : Window
         }
 
         Rect finalBounds = CaptureBounds();
-        bool moved = manualMoveStarted && PositionChanged(pointerStartBounds, finalBounds);
+        bool wasManualMove = manualMoveStarted;
+        bool moved = wasManualMove && PositionChanged(pointerStartBounds, finalBounds);
 
         pointerInteractionActive = false;
         manualMoveStarted = false;
@@ -376,7 +377,7 @@ public partial class FloatingPreviewWindow : Window
             Mouse.Capture(null);
         }
 
-        if (moved)
+        if (wasManualMove)
         {
             AppLog.Information(
                 "PreviewWindow",
