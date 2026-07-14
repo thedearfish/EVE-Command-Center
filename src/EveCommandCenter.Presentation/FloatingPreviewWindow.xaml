@@ -10,15 +10,12 @@
         MinHeight="48"
         WindowStartupLocation="Manual"
         WindowStyle="None"
-        ResizeMode="CanResizeWithGrip"
+        ResizeMode="CanResize"
         ShowInTaskbar="False"
         Background="#0B1117"
         Foreground="#E6EDF3"
         FontFamily="Segoe UI"
-        Cursor="Hand"
-        PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown"
-        PreviewMouseMove="OnSurfacePreviewMouseMove"
-        PreviewMouseLeftButtonUp="OnSurfacePreviewMouseLeftButtonUp">
+        PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown">
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
