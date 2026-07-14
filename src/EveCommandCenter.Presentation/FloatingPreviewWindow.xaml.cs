@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using EveCommandCenter.Application.Diagnostics;
 
 namespace EveCommandCenter.Presentation;
@@ -64,6 +65,13 @@ public partial class FloatingPreviewWindow : Window
     private bool nativeInteractionActive;
     private bool layoutTrackingEnabled;
     private bool suppressLayoutTracking;
+
+    private Point? pointerStartScreen;
+    private Rect pointerStartBounds;
+    private double pointerStartDpiScaleX = 1.0;
+    private double pointerStartDpiScaleY = 1.0;
+    private bool pointerInteractionActive;
+    private bool manualMoveStarted;
 
     public FloatingPreviewWindow(
         DetectedClientViewModel client,
@@ -247,60 +255,151 @@ public partial class FloatingPreviewWindow : Window
         return HtClient;
     }
 
-    private async void OnSurfacePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnSurfacePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left ||
             e.LeftButton != MouseButtonState.Pressed ||
+            nativeInteractionActive ||
             IsInsideResizeBorder(e.GetPosition(this)))
         {
             return;
         }
 
-        e.Handled = true;
-        Rect beforeMove = CaptureBounds();
+        pointerInteractionActive = true;
+        manualMoveStarted = false;
+        pointerStartScreen = PointToScreen(e.GetPosition(this));
+        pointerStartBounds = CaptureBounds();
 
-        try
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+        pointerStartDpiScaleX = Math.Max(0.1, dpi.DpiScaleX);
+        pointerStartDpiScaleY = Math.Max(0.1, dpi.DpiScaleY);
+
+        _ = Mouse.Capture(this, CaptureMode.SubTree);
+        e.Handled = true;
+    }
+
+    private void OnSurfacePreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!pointerInteractionActive || pointerStartScreen is null)
         {
-            DragMove();
-        }
-        catch (InvalidOperationException exception)
-        {
-            AppLog.Warning(
-                "PreviewWindow",
-                $"DragMove was rejected for {client.DisplayName}.",
-                exception);
             return;
         }
 
-        Rect afterMove = CaptureBounds();
-        if (!PositionChanged(beforeMove, afterMove))
+        if (e.LeftButton != MouseButtonState.Pressed)
         {
-            try
-            {
-                AppLog.Information(
-                    "Activation",
-                    $"Preview click requested activation of {client.DisplayName}; source HWND=0x{client.SourceWindowId:X}.");
-                await activateClient(client.SourceWindowId);
-            }
-            catch (Exception exception)
-            {
-                AppLog.Error(
-                    "Activation",
-                    $"Preview click activation failed for {client.DisplayName}.",
-                    exception);
-            }
+            FinishPointerInteraction(commitMove: manualMoveStarted);
+            return;
         }
+
+        Point currentScreen = PointToScreen(e.GetPosition(this));
+        double deltaPixelsX = currentScreen.X - pointerStartScreen.Value.X;
+        double deltaPixelsY = currentScreen.Y - pointerStartScreen.Value.Y;
+
+        if (!manualMoveStarted)
+        {
+            double horizontalDip = Math.Abs(deltaPixelsX / pointerStartDpiScaleX);
+            double verticalDip = Math.Abs(deltaPixelsY / pointerStartDpiScaleY);
+            if (horizontalDip < SystemParameters.MinimumHorizontalDragDistance &&
+                verticalDip < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            manualMoveStarted = true;
+            AppLog.SetCurrentOperation($"moving preview: {client.DisplayName}");
+            AppLog.Information(
+                "PreviewWindow",
+                $"Manual move started for {client.DisplayName}; bounds={FormatBounds(pointerStartBounds)}.");
+        }
+
+        Left = pointerStartBounds.Left + (deltaPixelsX / pointerStartDpiScaleX);
+        Top = pointerStartBounds.Top + (deltaPixelsY / pointerStartDpiScaleY);
+        e.Handled = true;
+    }
+
+    private async void OnSurfacePreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || !pointerInteractionActive)
+        {
+            return;
+        }
+
+        bool shouldActivate = !manualMoveStarted;
+        FinishPointerInteraction(commitMove: manualMoveStarted);
+        e.Handled = true;
+
+        if (!shouldActivate)
+        {
+            return;
+        }
+
+        try
+        {
+            AppLog.Information(
+                "Activation",
+                $"Preview click requested activation of {client.DisplayName}; source HWND=0x{client.SourceWindowId:X}.");
+            await activateClient(client.SourceWindowId);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error(
+                "Activation",
+                $"Preview click activation failed for {client.DisplayName}.",
+                exception);
+        }
+    }
+
+    private void OnSurfaceLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (pointerInteractionActive)
+        {
+            FinishPointerInteraction(commitMove: manualMoveStarted, releaseCapture: false);
+        }
+    }
+
+    private void FinishPointerInteraction(bool commitMove, bool releaseCapture = true)
+    {
+        if (!pointerInteractionActive)
+        {
+            return;
+        }
+
+        Rect finalBounds = CaptureBounds();
+        bool moved = manualMoveStarted && PositionChanged(pointerStartBounds, finalBounds);
+
+        pointerInteractionActive = false;
+        manualMoveStarted = false;
+        pointerStartScreen = null;
+
+        if (releaseCapture && IsMouseCaptured)
+        {
+            Mouse.Capture(null);
+        }
+
+        if (moved)
+        {
+            AppLog.Information(
+                "PreviewWindow",
+                $"Manual move completed for {client.DisplayName}; bounds={FormatBounds(finalBounds)}.");
+            AppLog.SetCurrentOperation("idle");
+        }
+
+        if (!commitMove || !moved || !layoutTrackingEnabled || suppressLayoutTracking)
+        {
+            return;
+        }
+
+        CommitLayout(finalBounds);
     }
 
     private void BeginNativeInteraction()
     {
         nativeInteractionActive = true;
         interactionStartBounds = CaptureBounds();
-        AppLog.SetCurrentOperation($"moving/resizing preview: {client.DisplayName}");
+        AppLog.SetCurrentOperation($"resizing preview: {client.DisplayName}");
         AppLog.Information(
             "PreviewWindow",
-            $"Move/resize started for {client.DisplayName}; " +
-            $"bounds={FormatBounds(interactionStartBounds)}.");
+            $"Native resize started for {client.DisplayName}; bounds={FormatBounds(interactionStartBounds)}.");
     }
 
     private void EndNativeInteraction()
@@ -314,18 +413,10 @@ public partial class FloatingPreviewWindow : Window
         Rect finalBounds = CaptureBounds();
         bool moved = PositionChanged(interactionStartBounds, finalBounds);
         bool resized = SizeChanged(interactionStartBounds, finalBounds);
-        string operation = moved && resized
-            ? "move and resize"
-            : resized
-                ? "resize"
-                : moved
-                    ? "move"
-                    : "interaction";
 
         AppLog.Information(
             "PreviewWindow",
-            $"{operation} completed for {client.DisplayName}; " +
-            $"bounds={FormatBounds(finalBounds)}.");
+            $"Native resize completed for {client.DisplayName}; bounds={FormatBounds(finalBounds)}.");
         AppLog.SetCurrentOperation("idle");
 
         if (!layoutTrackingEnabled || suppressLayoutTracking || (!moved && !resized))
@@ -333,14 +424,17 @@ public partial class FloatingPreviewWindow : Window
             return;
         }
 
+        CommitLayout(finalBounds);
+    }
+
+    private void CommitLayout(Rect bounds) =>
         LayoutCommitted?.Invoke(
             this,
             new PreviewWindowLayoutChangedEventArgs(
-                finalBounds.Left,
-                finalBounds.Top,
-                finalBounds.Width,
-                finalBounds.Height));
-    }
+                bounds.Left,
+                bounds.Top,
+                bounds.Width,
+                bounds.Height));
 
     private bool IsInsideResizeBorder(Point point)
     {
@@ -373,11 +467,16 @@ public partial class FloatingPreviewWindow : Window
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
+        if (pointerInteractionActive)
+        {
+            FinishPointerInteraction(commitMove: manualMoveStarted);
+        }
+
         if (nativeInteractionActive)
         {
             AppLog.Warning(
                 "PreviewWindow",
-                $"Window for {client.DisplayName} closed during a native move/resize interaction.");
+                $"Window for {client.DisplayName} closed during a native resize interaction.");
             AppLog.SetCurrentOperation("idle");
         }
 
