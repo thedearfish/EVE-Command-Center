@@ -6,6 +6,7 @@ namespace EveCommandCenter.Presentation;
 public sealed class DetectedClientViewModel : INotifyPropertyChanged
 {
     private string displayName;
+    private string currentSystem;
     private string state;
     private int processId;
     private string windowTitle;
@@ -17,6 +18,7 @@ public sealed class DetectedClientViewModel : INotifyPropertyChanged
     public DetectedClientViewModel(
         long sourceWindowId,
         string displayName,
+        string currentSystem,
         string state,
         int processId,
         string windowTitle,
@@ -27,6 +29,7 @@ public sealed class DetectedClientViewModel : INotifyPropertyChanged
     {
         SourceWindowId = sourceWindowId;
         this.displayName = displayName;
+        this.currentSystem = currentSystem;
         this.state = state;
         this.processId = processId;
         this.windowTitle = windowTitle;
@@ -48,6 +51,12 @@ public sealed class DetectedClientViewModel : INotifyPropertyChanged
     {
         get => displayName;
         private set => SetField(ref displayName, value);
+    }
+
+    public string CurrentSystem
+    {
+        get => currentSystem;
+        private set => SetField(ref currentSystem, value);
     }
 
     public string State
@@ -100,6 +109,7 @@ public sealed class DetectedClientViewModel : INotifyPropertyChanged
 
     public void Update(
         string nextDisplayName,
+        string nextCurrentSystem,
         string nextState,
         int nextProcessId,
         string nextWindowTitle,
@@ -109,6 +119,7 @@ public sealed class DetectedClientViewModel : INotifyPropertyChanged
         bool nextIsCycleEligible)
     {
         DisplayName = nextDisplayName;
+        CurrentSystem = nextCurrentSystem;
         State = nextState;
         ProcessId = nextProcessId;
         WindowTitle = nextWindowTitle;
