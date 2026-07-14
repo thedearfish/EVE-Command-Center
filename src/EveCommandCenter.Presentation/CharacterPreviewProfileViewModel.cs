@@ -7,6 +7,7 @@ public sealed record CharacterPreviewProfileSnapshot(
     string CharacterName,
     string CustomLabel,
     PreviewContentMode ContentMode,
+    string ActivationHotkey,
     double? Left,
     double? Top,
     double? Width,
@@ -16,6 +17,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
 {
     private string customLabel;
     private PreviewContentMode contentMode;
+    private string activationHotkey;
     private double? left;
     private double? top;
     private double? width;
@@ -27,6 +29,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
         CharacterName = snapshot.CharacterName.Trim();
         customLabel = snapshot.CustomLabel.Trim();
         contentMode = snapshot.ContentMode;
+        activationHotkey = snapshot.ActivationHotkey.Trim();
         left = snapshot.Left;
         top = snapshot.Top;
         width = snapshot.Width;
@@ -47,6 +50,12 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
     {
         get => contentMode;
         set => SetField(ref contentMode, value);
+    }
+
+    public string ActivationHotkey
+    {
+        get => activationHotkey;
+        set => SetField(ref activationHotkey, value.Trim());
     }
 
     public double? Left => left;
@@ -94,6 +103,7 @@ public sealed class CharacterPreviewProfileViewModel : INotifyPropertyChanged
             CharacterName,
             CustomLabel,
             ContentMode,
+            ActivationHotkey,
             Left,
             Top,
             Width,
