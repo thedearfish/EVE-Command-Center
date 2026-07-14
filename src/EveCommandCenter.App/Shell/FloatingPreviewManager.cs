@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using EveCommandCenter.Application.Abstractions;
+using EveCommandCenter.Application.Diagnostics;
 using EveCommandCenter.Core.Clients;
 using EveCommandCenter.Presentation;
 
@@ -38,12 +39,16 @@ public sealed class FloatingPreviewManager : IDisposable
             profile.PropertyChanged += OnProfileChanged;
         }
 
+        AppLog.Information("PreviewManager", "Floating preview manager initialized.");
         Reconcile();
     }
 
     public void ToggleVisibility()
     {
         previewsVisible = !previewsVisible;
+        AppLog.Information(
+            "PreviewManager",
+            previewsVisible ? "Showing all preview windows." : "Hiding all preview windows.");
 
         if (!previewsVisible)
         {
@@ -88,6 +93,7 @@ public sealed class FloatingPreviewManager : IDisposable
         }
 
         CloseAll();
+        AppLog.Information("PreviewManager", "Floating preview manager disposed.");
     }
 
     private void OnClientsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -97,6 +103,9 @@ public sealed class FloatingPreviewManager : IDisposable
             foreach (DetectedClientViewModel client in e.OldItems)
             {
                 client.PropertyChanged -= OnClientChanged;
+                AppLog.Information(
+                    "Discovery",
+                    $"EVE client removed: {client.DisplayName}; HWND=0x{client.SourceWindowId:X}.");
                 CloseWindow(client.SourceWindowId);
             }
         }
@@ -106,6 +115,10 @@ public sealed class FloatingPreviewManager : IDisposable
             foreach (DetectedClientViewModel client in e.NewItems)
             {
                 client.PropertyChanged += OnClientChanged;
+                AppLog.Information(
+                    "Discovery",
+                    $"EVE client detected: {client.DisplayName}; state={client.State}; " +
+                    $"PID={client.ProcessId}; HWND=0x{client.SourceWindowId:X}.");
             }
         }
 
@@ -127,6 +140,9 @@ public sealed class FloatingPreviewManager : IDisposable
             foreach (CharacterPreviewProfileViewModel profile in e.NewItems)
             {
                 profile.PropertyChanged += OnProfileChanged;
+                AppLog.Information(
+                    "Settings",
+                    $"Character preview profile created for {profile.CharacterName}.");
             }
         }
     }
@@ -155,6 +171,9 @@ public sealed class FloatingPreviewManager : IDisposable
                 entry.Window.CustomLabel = profile.CustomLabel;
             }
 
+            AppLog.Information(
+                "Settings",
+                $"Custom caption updated for {profile.CharacterName}.");
             return;
         }
 
@@ -166,6 +185,10 @@ public sealed class FloatingPreviewManager : IDisposable
                 ApplyPreferredModeSize(entry.Window, profile.ContentMode);
                 PersistWindowLayout(entry);
             }
+
+            AppLog.Information(
+                "Settings",
+                $"Content mode for {profile.CharacterName} changed to {profile.ContentMode}.");
         }
     }
 
@@ -173,6 +196,9 @@ public sealed class FloatingPreviewManager : IDisposable
     {
         if (e.PropertyName is nameof(MainWindowViewModel.AutoCreatePreviews))
         {
+            AppLog.Information(
+                "Settings",
+                $"Automatic preview creation set to {viewModel.AutoCreatePreviews}.");
             Reconcile();
             return;
         }
@@ -230,6 +256,10 @@ public sealed class FloatingPreviewManager : IDisposable
             {
                 if (!CharacterNameComparer.Equals(existing.Profile.CharacterName, client.DisplayName))
                 {
+                    AppLog.Information(
+                        "Discovery",
+                        $"Character identity for HWND=0x{client.SourceWindowId:X} changed from " +
+                        $"{existing.Profile.CharacterName} to {client.DisplayName}.");
                     CloseWindow(client.SourceWindowId);
                     CreateWindow(client);
                 }
@@ -251,7 +281,8 @@ public sealed class FloatingPreviewManager : IDisposable
         ApplyGlobalSettings(window);
         ApplyProfile(window, profile);
 
-        if (TryGetSavedBounds(profile, out Rect savedBounds))
+        bool restored = TryGetSavedBounds(profile, out Rect savedBounds);
+        if (restored)
         {
             window.ApplyBounds(
                 savedBounds.Left,
@@ -274,6 +305,12 @@ public sealed class FloatingPreviewManager : IDisposable
         window.Closed += OnWindowClosed;
         windows.Add(client.SourceWindowId, entry);
 
+        AppLog.Information(
+            "PreviewManager",
+            $"Preview window created for {client.DisplayName}; source HWND=0x{client.SourceWindowId:X}; " +
+            $"mode={profile.ContentMode}; restoredLayout={restored}; " +
+            $"bounds={window.Left:0},{window.Top:0} {window.Width:0}x{window.Height:0}.");
+
         if (previewsVisible)
         {
             window.Show();
@@ -284,7 +321,30 @@ public sealed class FloatingPreviewManager : IDisposable
 
     private async Task ActivateClientAsync(long sourceWindowId)
     {
-        await activationService.ActivateAsync(new WindowId(sourceWindowId));
+        try
+        {
+            var result = await activationService.ActivateAsync(new WindowId(sourceWindowId));
+            if (result.IsSuccess)
+            {
+                AppLog.Information(
+                    "Activation",
+                    $"Activated EVE client HWND=0x{sourceWindowId:X}.");
+            }
+            else
+            {
+                AppLog.Warning(
+                    "Activation",
+                    $"Could not activate EVE client HWND=0x{sourceWindowId:X}: {result.Message}");
+            }
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error(
+                "Activation",
+                $"Activation threw for EVE client HWND=0x{sourceWindowId:X}.",
+                exception);
+            throw;
+        }
     }
 
     private void ApplyGlobalSettings(FloatingPreviewWindow window)
@@ -350,6 +410,9 @@ public sealed class FloatingPreviewManager : IDisposable
 
         if (visibleArea.IsEmpty || visibleArea.Width < 48 || visibleArea.Height < 32)
         {
+            AppLog.Warning(
+                "PreviewManager",
+                $"Saved layout for {profile.CharacterName} is outside the current virtual desktop and will be reset.");
             return false;
         }
 
@@ -400,6 +463,10 @@ public sealed class FloatingPreviewManager : IDisposable
             return;
         }
 
+        AppLog.Information(
+            "Layout",
+            $"Committing layout for {entry.Profile.CharacterName}: " +
+            $"{e.Left:0},{e.Top:0} {e.Width:0}x{e.Height:0}.");
         viewModel.UpdateCharacterLayout(
             entry.Profile.CharacterName,
             e.Left,
@@ -446,6 +513,9 @@ public sealed class FloatingPreviewManager : IDisposable
         PersistWindowLayout(entry);
         entry.Window.LayoutCommitted -= OnWindowLayoutCommitted;
         entry.Window.Closed -= OnWindowClosed;
+        AppLog.Information(
+            "PreviewManager",
+            $"Closing preview window for {entry.Profile.CharacterName}; source HWND=0x{sourceWindowId:X}.");
         entry.Window.Close();
     }
 
@@ -456,6 +526,9 @@ public sealed class FloatingPreviewManager : IDisposable
             PersistWindowLayout(entry);
             entry.Window.LayoutCommitted -= OnWindowLayoutCommitted;
             entry.Window.Closed -= OnWindowClosed;
+            AppLog.Information(
+                "PreviewManager",
+                $"Closing preview window for {entry.Profile.CharacterName}; source HWND=0x{sourceWindowId:X}.");
             entry.Window.Close();
             windows.Remove(sourceWindowId);
         }
