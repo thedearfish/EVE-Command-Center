@@ -19,7 +19,6 @@
         FontFamily="Segoe UI"
         Loaded="OnPreviewWindowLoaded"
         LocationChanged="OnPreviewWindowLocationChanged"
-        SizeChanged="OnPreviewWindowSizeChanged"
         IsVisibleChanged="OnPreviewWindowVisibilityChanged"
         StateChanged="OnPreviewWindowStateChanged"
         PreviewMouseLeftButtonDown="OnSurfacePreviewMouseLeftButtonDown"
