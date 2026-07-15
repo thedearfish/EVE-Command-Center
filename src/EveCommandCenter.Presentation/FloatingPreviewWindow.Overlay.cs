@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using EveCommandCenter.Application.Diagnostics;
 
@@ -220,6 +221,21 @@ public partial class FloatingPreviewWindow
 
         try
         {
+            HwndSource? source = HwndSource.FromHwnd(handle);
+            if (source?.CompositionTarget is not null)
+            {
+                source.CompositionTarget.BackgroundColor = Colors.Transparent;
+            }
+
+            var glassMargins = new DwmMargins(-1, -1, -1, -1);
+            int glassResult = DwmExtendFrameIntoClientArea(handle, ref glassMargins);
+            if (glassResult != 0)
+            {
+                AppLog.Warning(
+                    "Opacity",
+                    $"Could not extend transparent DWM frame for {client.DisplayName}; HRESULT=0x{glassResult:X8}.");
+            }
+
             uint borderColor = DwmColorNone;
             _ = DwmSetWindowAttribute(
                 handle,
@@ -245,9 +261,14 @@ public partial class FloatingPreviewWindow
         }
         catch (Exception exception)
         {
-            AppLog.Warning("PreviewWindow", "Could not suppress the native preview border.", exception);
+            AppLog.Warning("PreviewWindow", "Could not configure the frameless transparent preview surface.", exception);
         }
     }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(
+        nint windowHandle,
+        ref DwmMargins margins);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(
@@ -273,4 +294,13 @@ public partial class FloatingPreviewWindow
         int width,
         int height,
         uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct DwmMargins(int left, int right, int top, int bottom)
+    {
+        public readonly int LeftWidth = left;
+        public readonly int RightWidth = right;
+        public readonly int TopHeight = top;
+        public readonly int BottomHeight = bottom;
+    }
 }
