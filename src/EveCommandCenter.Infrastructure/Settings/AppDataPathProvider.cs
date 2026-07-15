@@ -2,14 +2,12 @@ namespace EveCommandCenter.Infrastructure.Settings;
 
 public static class AppDataPathProvider
 {
-    public static string GetSettingsPath()
-    {
-        var localAppData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
+    public static string GetSettingsPath() =>
+        Path.Combine(AppContext.BaseDirectory, "settings.json");
 
-        return Path.Combine(
-            localAppData,
-            "EVE Command Center",
-            "settings.json");
-    }
+    public static string GetFirstRunStatePath() =>
+        Path.Combine(AppContext.BaseDirectory, "app-state.json");
+
+    public static string GetLogsDirectory() =>
+        Path.Combine(AppContext.BaseDirectory, "logs");
 }

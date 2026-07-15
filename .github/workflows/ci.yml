@@ -4,15 +4,16 @@ on:
   push:
     branches:
       - main
-      - "foundation/**"
-      - "feature/**"
-      - "fix/**"
   pull_request:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -32,17 +33,50 @@ jobs:
         run: dotnet restore EveCommandCenter.sln
 
       - name: Build
-        run: dotnet build EveCommandCenter.sln --configuration Release --no-restore
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/diagnostics | Out-Null
+          dotnet build EveCommandCenter.sln --configuration Release --no-restore 2>&1 | Tee-Object -FilePath artifacts/diagnostics/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: artifacts/diagnostics/build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Test
         run: dotnet test EveCommandCenter.sln --configuration Release --no-build --collect:"XPlat Code Coverage"
 
-      - name: Publish Windows test build
-        run: dotnet publish src/EveCommandCenter.App/EveCommandCenter.App.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/EVE-Command-Center
+      - name: Publish Windows self-contained test build
+        run: dotnet publish src/EveCommandCenter.App/EveCommandCenter.App.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false --output artifacts/EVE-Command-Center
+
+      - name: Package Windows test build
+        shell: pwsh
+        run: Compress-Archive -Path artifacts/EVE-Command-Center/* -DestinationPath artifacts/EVE-Command-Center-win-x64.zip -Force
 
       - name: Upload Windows test build
         uses: actions/upload-artifact@v4
         with:
-          name: EVE-Command-Center-win-x64
+          name: EVE-Command-Center-win-x64-self-contained
           path: artifacts/EVE-Command-Center
           if-no-files-found: error
+
+      - name: Publish development prerelease
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view dev-latest *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete dev-latest --cleanup-tag --yes
+          }
+          gh release create dev-latest artifacts/EVE-Command-Center-win-x64.zip `
+            --target "${{ github.event.pull_request.head.sha }}" `
+            --title "EVE Command Center — latest development build" `
+            --notes "Automatic Windows x64 self-contained build from PR #${{ github.event.pull_request.number }}. This is an unstable test build." `
+            --prerelease

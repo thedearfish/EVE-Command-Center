@@ -2,165 +2,321 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding Title}"
-        Width="1180"
-        Height="760"
-        MinWidth="960"
-        MinHeight="620"
+        Width="980"
+        Height="800"
+        MinWidth="860"
+        MinHeight="680"
         WindowStartupLocation="CenterScreen"
         Background="#0E141B"
         Foreground="#E6EDF3"
         FontFamily="Segoe UI">
-  <Grid Margin="24">
+  <Window.Resources>
+    <Style x:Key="CardStyle" TargetType="Border">
+      <Setter Property="Padding" Value="22" />
+      <Setter Property="Margin" Value="0,0,0,14" />
+      <Setter Property="Background" Value="#151E27" />
+      <Setter Property="BorderBrush" Value="#263544" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+
+    <Style TargetType="TextBox">
+      <Setter Property="Height" Value="34" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Background" Value="#0F171F" />
+      <Setter Property="Foreground" Value="#E6EDF3" />
+      <Setter Property="BorderBrush" Value="#34495C" />
+      <Setter Property="CaretBrush" Value="#E6EDF3" />
+      <Setter Property="SelectionBrush" Value="#27688A" />
+    </Style>
+
+    <Style x:Key="HotkeyCaptureTextBox"
+           TargetType="TextBox"
+           BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="IsReadOnly" Value="True" />
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="ToolTip" Value="Click here, then press the required key or key combination. Press Esc to clear." />
+      <EventSetter Event="PreviewKeyDown" Handler="OnHotkeyPreviewKeyDown" />
+      <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnHotkeyPreviewMouseLeftButtonDown" />
+      <EventSetter Event="GotKeyboardFocus" Handler="OnHotkeyGotKeyboardFocus" />
+    </Style>
+
+    <Style TargetType="ComboBox">
+      <Setter Property="Height" Value="34" />
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="Background" Value="#0F171F" />
+      <Setter Property="Foreground" Value="#E6EDF3" />
+      <Setter Property="BorderBrush" Value="#34495C" />
+    </Style>
+
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="Foreground" Value="Black" />
+      <Style.Triggers>
+        <Trigger Property="IsHighlighted" Value="True">
+          <Setter Property="Foreground" Value="Black" />
+        </Trigger>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Foreground" Value="Black" />
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="#666666" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="CheckBox">
+      <Setter Property="Margin" Value="0,0,0,12" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="MutedText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#8B9AAA" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="26">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="20" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="18" />
       <RowDefinition Height="*" />
-      <RowDefinition Height="18" />
+      <RowDefinition Height="16" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <StackPanel>
-      <TextBlock Text="{Binding Title}" FontSize="30" FontWeight="SemiBold" />
-      <TextBlock Margin="0,6,0,0"
-                 Foreground="#8B9AAA"
-                 FontSize="14"
-                 Text="Live EVE client discovery diagnostics" />
-    </StackPanel>
+    <DockPanel>
+      <StackPanel>
+        <TextBlock FontSize="30" FontWeight="SemiBold" Text="EVE Command Center" />
+        <TextBlock Margin="0,6,0,0"
+                   Style="{StaticResource MutedText}"
+                   FontSize="14"
+                   Text="Settings for floating EVE windows, per-character layouts and switching." />
+      </StackPanel>
+      <Border DockPanel.Dock="Right"
+              Margin="20,2,0,0"
+              Padding="14,9"
+              VerticalAlignment="Top"
+              Background="#101820"
+              BorderBrush="#2C3B4A"
+              BorderThickness="1"
+              CornerRadius="8">
+        <StackPanel>
+          <TextBlock FontSize="12" Foreground="#8B9AAA" Text="CLIENT STATUS" />
+          <TextBlock Margin="0,4,0,0" FontWeight="SemiBold" Text="{Binding ClientSummary}" />
+        </StackPanel>
+      </Border>
+    </DockPanel>
 
-    <UniformGrid Grid.Row="2" Columns="4">
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="EVE CLIENTS" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding ClientCount}" />
-        </StackPanel>
-      </Border>
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="READY" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding CharacterCount}" />
-        </StackPanel>
-      </Border>
-      <Border Margin="0,0,10,0" Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="CHARACTER SELECT" />
-          <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="SemiBold" Text="{Binding CharacterSelectionCount}" />
-        </StackPanel>
-      </Border>
-      <Border Padding="14" Background="#151E27" CornerRadius="8">
-        <StackPanel>
-          <TextBlock Foreground="#8B9AAA" Text="LAST SCAN" />
-          <TextBlock Margin="0,8,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding LastScanText}" />
-        </StackPanel>
-      </Border>
-    </UniformGrid>
-
-    <Border Grid.Row="4"
-            Padding="18"
-            Background="#151E27"
-            BorderBrush="#263544"
-            BorderThickness="1"
-            CornerRadius="10">
-      <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="14" />
-          <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <DockPanel>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="0,0,8,0">
+        <Border Style="{StaticResource CardStyle}">
           <StackPanel>
-            <TextBlock FontSize="22" FontWeight="SemiBold" Text="Detected clients" />
-            <TextBlock Margin="0,5,0,0"
-                       Foreground="#8B9AAA"
-                       Text="The list refreshes automatically every 750 ms." />
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Startup and tray" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="Each extracted test build keeps settings, first-run state and logs in its own folder. Closing this window hides it; Exit in the tray menu fully stops the application." />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Width="44" Height="44" Background="#0F2932" CornerRadius="22">
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="20"
+                           Foreground="#55C2A2"
+                           Text="●" />
+              </Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Tray-first mode enabled" />
+                <TextBlock Margin="0,3,0,0"
+                           Style="{StaticResource MutedText}"
+                           Text="Double-click the tray icon to open these settings again." />
+              </StackPanel>
+            </Grid>
           </StackPanel>
-        </DockPanel>
+        </Border>
 
-        <Grid Grid.Row="2">
-          <TextBlock HorizontalAlignment="Center"
-                     VerticalAlignment="Center"
-                     Foreground="#8B9AAA"
-                     FontSize="18"
-                     Text="No EVE clients detected. Start EVE Online and keep this window open.">
-            <TextBlock.Style>
-              <Style TargetType="TextBlock">
-                <Setter Property="Visibility" Value="Collapsed" />
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding ClientCount}" Value="0">
-                    <Setter Property="Visibility" Value="Visible" />
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </TextBlock.Style>
-          </TextBlock>
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Floating windows" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="Windows are created dynamically for logged-in characters. Their position and size are remembered by character name, so a restarted EVE client returns to the same place even with a new HWND." />
 
-          <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Clients}">
+            <CheckBox IsChecked="{Binding AutoCreatePreviews}"
+                      Content="Automatically create windows for logged-in characters" />
+            <CheckBox IsChecked="{Binding AlwaysOnTop}"
+                      Content="Keep character windows always on top" />
+            <CheckBox IsChecked="{Binding ShowPreviewHeader}"
+                      Content="Show the header in Standard mode" />
+
+            <Grid Margin="0,8,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="24" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Default live width" />
+                <TextBox Text="{Binding PreviewWidth, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Default live height" />
+                <TextBox Text="{Binding PreviewHeight, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <DockPanel Margin="0,0,0,6">
+                  <TextBlock Foreground="#8B9AAA" Text="Opacity" />
+                  <TextBlock DockPanel.Dock="Right"
+                             HorizontalAlignment="Right"
+                             Foreground="#C6D1DC"
+                             Text="{Binding PreviewOpacityPercent, StringFormat={}{0}%}" />
+                </DockPanel>
+                <Slider Minimum="0.35"
+                        Maximum="1"
+                        TickFrequency="0.05"
+                        IsSnapToTickEnabled="True"
+                        Value="{Binding PreviewOpacity}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Per-character appearance and switching" />
+            <TextBlock Margin="0,6,0,16"
+                       Style="{StaticResource MutedText}"
+                       Text="Choose what each character window renders, add a caption and assign a direct activation hotkey. Click a hotkey box and press the required key or combination; press Esc to clear it." />
+
+            <ItemsControl ItemsSource="{Binding CharacterProfiles}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Border Margin="0,0,0,10"
-                          Padding="14"
+                  <Border Margin="0,0,0,9"
+                          Padding="13"
                           Background="#101820"
-                          BorderBrush="#2C3B4A"
+                          BorderBrush="#263544"
                           BorderThickness="1"
-                          CornerRadius="8">
+                          CornerRadius="7">
                     <Grid>
                       <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="220" />
-                        <ColumnDefinition Width="150" />
-                        <ColumnDefinition Width="110" />
-                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="155" />
+                        <ColumnDefinition Width="14" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="190" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="155" />
                       </Grid.ColumnDefinitions>
 
-                      <StackPanel>
-                        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding DisplayName}" />
-                        <TextBlock Margin="0,4,0,0" Foreground="#8B9AAA" Text="{Binding WindowTitle}" />
-                      </StackPanel>
-
-                      <StackPanel Grid.Column="1">
-                        <TextBlock Foreground="#8B9AAA" Text="STATE" />
-                        <TextBlock Margin="0,4,0,0" Text="{Binding State}" />
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="{Binding CharacterName}" />
+                        <TextBlock Margin="0,3,0,0" FontSize="12">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Foreground" Value="#8B9AAA" />
+                              <Setter Property="Text" Value="Remembered layout" />
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDetected}" Value="True">
+                                  <Setter Property="Foreground" Value="#55C2A2" />
+                                  <Setter Property="Text" Value="● Currently detected" />
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
                       </StackPanel>
 
                       <StackPanel Grid.Column="2">
-                        <TextBlock Foreground="#8B9AAA" Text="PID" />
-                        <TextBlock Margin="0,4,0,0" Text="{Binding ProcessId}" />
-                      </StackPanel>
-
-                      <StackPanel Grid.Column="3">
-                        <TextBlock Foreground="#8B9AAA" Text="WINDOW" />
-                        <TextBlock Margin="0,4,0,0" FontFamily="Consolas" Text="{Binding WindowId}" />
+                        <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Additional caption" />
+                        <TextBox Text="{Binding CustomLabel, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                 ToolTip="Optional text shown in addition to the character name, for example Scout, FAX or Trade." />
                       </StackPanel>
 
                       <StackPanel Grid.Column="4">
-                        <TextBlock Foreground="#8B9AAA" Text="DIAGNOSTICS" />
-                        <TextBlock Margin="0,4,0,0">
-                          <Run Text="Visible: " /><Run Text="{Binding IsVisible}" />
-                          <Run Text=" · Minimized: " /><Run Text="{Binding IsMinimized}" />
-                          <Run Text=" · Responsive: " /><Run Text="{Binding IsResponsive}" />
-                          <Run Text=" · Cycle: " /><Run Text="{Binding IsCycleEligible}" />
-                        </TextBlock>
+                        <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Window content" />
+                        <ComboBox ItemsSource="{Binding DataContext.PreviewModeOptions, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding ContentMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="6">
+                        <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Activate hotkey" />
+                        <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                                 Text="{Binding ActivationHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                       </StackPanel>
                     </Grid>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-          </ScrollViewer>
-        </Grid>
-      </Grid>
-    </Border>
+          </StackPanel>
+        </Border>
 
-    <Border Grid.Row="6"
-            Padding="12,8"
+        <Border Style="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="Global hotkeys" />
+            <TextBlock Margin="0,6,0,18"
+                       Style="{StaticResource MutedText}"
+                       Text="Click a box and press one key or a combination. Bare letter and number keys are system-wide while EVE Command Center is running. Click Save to register changes." />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Next character" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding NextCharacterHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Previous character" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding PreviousCharacterHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <TextBlock Margin="0,0,0,6" Foreground="#8B9AAA" Text="Show / hide windows" />
+                <TextBox Style="{StaticResource HotkeyCaptureTextBox}"
+                         Text="{Binding TogglePreviewsHotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="4"
+            Padding="14,10"
             Background="#111A22"
             BorderBrush="#263544"
             BorderThickness="1"
             CornerRadius="8">
-      <TextBlock Foreground="#8B9AAA" Text="{Binding StatusMessage}" />
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Width="120"
+                Height="36"
+                Margin="18,0,0,0"
+                Background="#1E6F9F"
+                Foreground="White"
+                BorderThickness="0"
+                FontWeight="SemiBold"
+                Command="{Binding SaveCommand}"
+                Content="Save settings" />
+        <TextBlock VerticalAlignment="Center"
+                   Foreground="#A7B4C0"
+                   Text="{Binding StatusMessage}" />
+      </DockPanel>
     </Border>
   </Grid>
 </Window>
