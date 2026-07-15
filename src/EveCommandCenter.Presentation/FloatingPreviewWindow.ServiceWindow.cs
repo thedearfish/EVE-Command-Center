@@ -285,7 +285,7 @@ public partial class FloatingPreviewWindow
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
     private static extern nint ServiceSetWindowLongPtr64(nint windowHandle, int index, nint value);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ServiceSetWindowPos(
         nint windowHandle,
