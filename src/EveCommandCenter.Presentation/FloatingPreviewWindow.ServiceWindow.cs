@@ -143,25 +143,43 @@ public partial class FloatingPreviewWindow
         }
 
         ServiceWindowPosition position = Marshal.PtrToStructure<ServiceWindowPosition>(lParam);
-        bool invalidPosition = position.X <= -30000 || position.Y <= -30000;
-        bool invalidSize = position.Width <= 0 || position.Height <= 0 ||
-                           position.Width > 16384 || position.Height > 16384;
+        bool moveRequested = (position.Flags & ServiceSwpNoMove) == 0;
+        bool sizeRequested = (position.Flags & ServiceSwpNoSize) == 0;
+
+        // WINDOWPOS deliberately contains zero x/y or cx/cy when SWP_NOMOVE or
+        // SWP_NOSIZE is present. Treating those ignored fields as invalid caused
+        // every manual move to be immediately restored to the previous position.
+        bool invalidPosition = moveRequested &&
+                               (position.X <= -30000 || position.Y <= -30000);
+        bool invalidSize = sizeRequested &&
+                           (position.Width <= 0 || position.Height <= 0 ||
+                            position.Width > 16384 || position.Height > 16384);
         if (!invalidPosition && !invalidSize)
         {
             return;
         }
 
-        position.X = (int)Math.Round(lastSafeServiceBounds.Left);
-        position.Y = (int)Math.Round(lastSafeServiceBounds.Top);
-        position.Width = Math.Max(1, (int)Math.Round(lastSafeServiceBounds.Width));
-        position.Height = Math.Max(1, (int)Math.Round(lastSafeServiceBounds.Height));
-        position.Flags &= ~(ServiceSwpNoMove | ServiceSwpNoSize);
+        if (invalidPosition)
+        {
+            position.X = (int)Math.Round(lastSafeServiceBounds.Left);
+            position.Y = (int)Math.Round(lastSafeServiceBounds.Top);
+            position.Flags &= ~ServiceSwpNoMove;
+        }
+
+        if (invalidSize)
+        {
+            position.Width = Math.Max(1, (int)Math.Round(lastSafeServiceBounds.Width));
+            position.Height = Math.Max(1, (int)Math.Round(lastSafeServiceBounds.Height));
+            position.Flags &= ~ServiceSwpNoSize;
+        }
+
         Marshal.StructureToPtr(position, lParam, false);
 
         AppLog.Warning(
             "PreviewWindow",
-            $"Rejected invalid Windows geometry for {client.DisplayName}; " +
-            $"restoring {lastSafeServiceBounds.Left:0},{lastSafeServiceBounds.Top:0} " +
+            $"Rejected genuinely invalid Windows geometry for {client.DisplayName}; " +
+            $"restorePosition={invalidPosition}; restoreSize={invalidSize}; " +
+            $"safeBounds={lastSafeServiceBounds.Left:0},{lastSafeServiceBounds.Top:0} " +
             $"{lastSafeServiceBounds.Width:0}x{lastSafeServiceBounds.Height:0}.");
     }
 
