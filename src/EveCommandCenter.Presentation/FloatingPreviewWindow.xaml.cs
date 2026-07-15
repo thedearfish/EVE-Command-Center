@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -24,20 +23,6 @@ public sealed class PreviewWindowLayoutChangedEventArgs(
 
 public partial class FloatingPreviewWindow : Window
 {
-    private const int WmNcHitTest = 0x0084;
-    private const int WmEnterSizeMove = 0x0231;
-    private const int WmExitSizeMove = 0x0232;
-
-    private const int HtClient = 1;
-    private const int HtLeft = 10;
-    private const int HtRight = 11;
-    private const int HtTop = 12;
-    private const int HtTopLeft = 13;
-    private const int HtTopRight = 14;
-    private const int HtBottom = 15;
-    private const int HtBottomLeft = 16;
-    private const int HtBottomRight = 17;
-
     private const double ResizeBorderDip = 8;
 
     public static readonly DependencyProperty ShowHeaderProperty = DependencyProperty.Register(
@@ -58,11 +43,14 @@ public partial class FloatingPreviewWindow : Window
         typeof(FloatingPreviewWindow),
         new PropertyMetadata(PreviewContentMode.Standard));
 
+    public static readonly DependencyProperty IsClientActiveProperty = DependencyProperty.Register(
+        nameof(IsClientActive),
+        typeof(bool),
+        typeof(FloatingPreviewWindow),
+        new PropertyMetadata(false));
+
     private readonly DetectedClientViewModel client;
     private readonly Func<long, Task> activateClient;
-    private HwndSource? hwndSource;
-    private Rect interactionStartBounds;
-    private bool nativeInteractionActive;
     private bool layoutTrackingEnabled;
     private bool suppressLayoutTracking;
 
@@ -72,6 +60,8 @@ public partial class FloatingPreviewWindow : Window
     private double pointerStartDpiScaleY = 1.0;
     private bool pointerInteractionActive;
     private bool manualMoveStarted;
+    private bool manualResizeStarted;
+    private ResizeEdges pointerResizeEdges;
 
     public FloatingPreviewWindow(
         DetectedClientViewModel client,
@@ -105,6 +95,12 @@ public partial class FloatingPreviewWindow : Window
     {
         get => (PreviewContentMode)GetValue(ContentModeProperty);
         set => SetValue(ContentModeProperty, value);
+    }
+
+    public bool IsClientActive
+    {
+        get => (bool)GetValue(IsClientActiveProperty);
+        set => SetValue(IsClientActiveProperty, value);
     }
 
     public void ApplyBounds(double left, double top, double width, double height)
@@ -152,128 +148,33 @@ public partial class FloatingPreviewWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         nint handle = new WindowInteropHelper(this).Handle;
-        hwndSource = HwndSource.FromHwnd(handle);
-        hwndSource?.AddHook(WindowProcedure);
         AppLog.Information(
             "PreviewWindow",
             $"Native preview window initialized for {client.DisplayName}; HWND=0x{handle.ToInt64():X}.");
-    }
-
-    private nint WindowProcedure(
-        nint hwnd,
-        int message,
-        nint wParam,
-        nint lParam,
-        ref bool handled)
-    {
-        switch (message)
-        {
-            case WmNcHitTest:
-            {
-                int hitTest = HitTestResizeBorder(hwnd, lParam);
-                if (hitTest != HtClient)
-                {
-                    handled = true;
-                    return new nint(hitTest);
-                }
-
-                break;
-            }
-
-            case WmEnterSizeMove:
-                BeginNativeInteraction();
-                break;
-
-            case WmExitSizeMove:
-                EndNativeInteraction();
-                break;
-        }
-
-        return nint.Zero;
-    }
-
-    private int HitTestResizeBorder(nint hwnd, nint lParam)
-    {
-        if (ResizeMode is ResizeMode.NoResize or ResizeMode.CanMinimize ||
-            WindowState != WindowState.Normal ||
-            !GetWindowRect(hwnd, out NativeRect rectangle))
-        {
-            return HtClient;
-        }
-
-        int cursorX = GetSignedLowWord(lParam);
-        int cursorY = GetSignedHighWord(lParam);
-        uint dpi = GetDpiForWindow(hwnd);
-        double scale = dpi == 0 ? 1.0 : dpi / 96.0;
-        int border = Math.Max(6, (int)Math.Ceiling(ResizeBorderDip * scale));
-
-        bool left = cursorX >= rectangle.Left && cursorX < rectangle.Left + border;
-        bool right = cursorX <= rectangle.Right && cursorX > rectangle.Right - border;
-        bool top = cursorY >= rectangle.Top && cursorY < rectangle.Top + border;
-        bool bottom = cursorY <= rectangle.Bottom && cursorY > rectangle.Bottom - border;
-
-        if (top && left)
-        {
-            return HtTopLeft;
-        }
-
-        if (top && right)
-        {
-            return HtTopRight;
-        }
-
-        if (bottom && left)
-        {
-            return HtBottomLeft;
-        }
-
-        if (bottom && right)
-        {
-            return HtBottomRight;
-        }
-
-        if (left)
-        {
-            return HtLeft;
-        }
-
-        if (right)
-        {
-            return HtRight;
-        }
-
-        if (top)
-        {
-            return HtTop;
-        }
-
-        if (bottom)
-        {
-            return HtBottom;
-        }
-
-        return HtClient;
     }
 
     private void OnSurfacePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left ||
             e.LeftButton != MouseButtonState.Pressed ||
-            nativeInteractionActive ||
-            IsInsideResizeBorder(e.GetPosition(this)))
+            pointerInteractionActive)
         {
             return;
         }
 
+        Point localPoint = e.GetPosition(this);
+        pointerResizeEdges = GetResizeEdges(localPoint);
         pointerInteractionActive = true;
         manualMoveStarted = false;
-        pointerStartScreen = PointToScreen(e.GetPosition(this));
+        manualResizeStarted = false;
+        pointerStartScreen = PointToScreen(localPoint);
         pointerStartBounds = CaptureBounds();
 
         DpiScale dpi = VisualTreeHelper.GetDpi(this);
         pointerStartDpiScaleX = Math.Max(0.1, dpi.DpiScaleX);
         pointerStartDpiScaleY = Math.Max(0.1, dpi.DpiScaleY);
 
+        Cursor = GetResizeCursor(pointerResizeEdges);
         _ = Mouse.Capture(this, CaptureMode.SubTree);
         e.Handled = true;
     }
@@ -282,25 +183,44 @@ public partial class FloatingPreviewWindow : Window
     {
         if (!pointerInteractionActive || pointerStartScreen is null)
         {
+            Cursor = GetResizeCursor(GetResizeEdges(e.GetPosition(this)));
             return;
         }
 
         if (e.LeftButton != MouseButtonState.Pressed)
         {
-            FinishPointerInteraction(commitMove: manualMoveStarted);
+            FinishPointerInteraction(commitLayout: manualMoveStarted || manualResizeStarted);
             return;
         }
 
         Point currentScreen = PointToScreen(e.GetPosition(this));
-        double deltaPixelsX = currentScreen.X - pointerStartScreen.Value.X;
-        double deltaPixelsY = currentScreen.Y - pointerStartScreen.Value.Y;
+        double deltaX = (currentScreen.X - pointerStartScreen.Value.X) / pointerStartDpiScaleX;
+        double deltaY = (currentScreen.Y - pointerStartScreen.Value.Y) / pointerStartDpiScaleY;
+
+        if (pointerResizeEdges != ResizeEdges.None)
+        {
+            if (!manualResizeStarted && !PassedDragThreshold(deltaX, deltaY))
+            {
+                return;
+            }
+
+            if (!manualResizeStarted)
+            {
+                manualResizeStarted = true;
+                AppLog.SetCurrentOperation($"resizing preview: {client.DisplayName}");
+                AppLog.Information(
+                    "PreviewWindow",
+                    $"Manual resize started for {client.DisplayName}; bounds={FormatBounds(pointerStartBounds)}; edges={pointerResizeEdges}.");
+            }
+
+            ApplyPointerResize(deltaX, deltaY);
+            e.Handled = true;
+            return;
+        }
 
         if (!manualMoveStarted)
         {
-            double horizontalDip = Math.Abs(deltaPixelsX / pointerStartDpiScaleX);
-            double verticalDip = Math.Abs(deltaPixelsY / pointerStartDpiScaleY);
-            if (horizontalDip < SystemParameters.MinimumHorizontalDragDistance &&
-                verticalDip < SystemParameters.MinimumVerticalDragDistance)
+            if (!PassedDragThreshold(deltaX, deltaY))
             {
                 return;
             }
@@ -312,8 +232,8 @@ public partial class FloatingPreviewWindow : Window
                 $"Manual move started for {client.DisplayName}; bounds={FormatBounds(pointerStartBounds)}.");
         }
 
-        Left = pointerStartBounds.Left + (deltaPixelsX / pointerStartDpiScaleX);
-        Top = pointerStartBounds.Top + (deltaPixelsY / pointerStartDpiScaleY);
+        Left = pointerStartBounds.Left + deltaX;
+        Top = pointerStartBounds.Top + deltaY;
         e.Handled = true;
     }
 
@@ -324,8 +244,8 @@ public partial class FloatingPreviewWindow : Window
             return;
         }
 
-        bool shouldActivate = !manualMoveStarted;
-        FinishPointerInteraction(commitMove: manualMoveStarted);
+        bool shouldActivate = !manualMoveStarted && !manualResizeStarted;
+        FinishPointerInteraction(commitLayout: manualMoveStarted || manualResizeStarted);
         e.Handled = true;
 
         if (!shouldActivate)
@@ -353,11 +273,13 @@ public partial class FloatingPreviewWindow : Window
     {
         if (pointerInteractionActive)
         {
-            FinishPointerInteraction(commitMove: manualMoveStarted, releaseCapture: false);
+            FinishPointerInteraction(
+                commitLayout: manualMoveStarted || manualResizeStarted,
+                releaseCapture: false);
         }
     }
 
-    private void FinishPointerInteraction(bool commitMove, bool releaseCapture = true)
+    private void FinishPointerInteraction(bool commitLayout, bool releaseCapture = true)
     {
         if (!pointerInteractionActive)
         {
@@ -366,11 +288,16 @@ public partial class FloatingPreviewWindow : Window
 
         Rect finalBounds = CaptureBounds();
         bool wasManualMove = manualMoveStarted;
-        bool moved = wasManualMove && PositionChanged(pointerStartBounds, finalBounds);
+        bool wasManualResize = manualResizeStarted;
+        bool changed = PositionChanged(pointerStartBounds, finalBounds) ||
+                       SizeChanged(pointerStartBounds, finalBounds);
 
         pointerInteractionActive = false;
         manualMoveStarted = false;
+        manualResizeStarted = false;
+        pointerResizeEdges = ResizeEdges.None;
         pointerStartScreen = null;
+        Cursor = null;
 
         if (releaseCapture && IsMouseCaptured)
         {
@@ -384,8 +311,15 @@ public partial class FloatingPreviewWindow : Window
                 $"Manual move completed for {client.DisplayName}; bounds={FormatBounds(finalBounds)}.");
             AppLog.SetCurrentOperation("idle");
         }
+        else if (wasManualResize)
+        {
+            AppLog.Information(
+                "PreviewWindow",
+                $"Manual resize completed for {client.DisplayName}; bounds={FormatBounds(finalBounds)}.");
+            AppLog.SetCurrentOperation("idle");
+        }
 
-        if (!commitMove || !moved || !layoutTrackingEnabled || suppressLayoutTracking)
+        if (!commitLayout || !changed || !layoutTrackingEnabled || suppressLayoutTracking)
         {
             return;
         }
@@ -393,39 +327,99 @@ public partial class FloatingPreviewWindow : Window
         CommitLayout(finalBounds);
     }
 
-    private void BeginNativeInteraction()
+    private void ApplyPointerResize(double deltaX, double deltaY)
     {
-        nativeInteractionActive = true;
-        interactionStartBounds = CaptureBounds();
-        AppLog.SetCurrentOperation($"resizing preview: {client.DisplayName}");
-        AppLog.Information(
-            "PreviewWindow",
-            $"Native resize started for {client.DisplayName}; bounds={FormatBounds(interactionStartBounds)}.");
+        double left = pointerStartBounds.Left;
+        double top = pointerStartBounds.Top;
+        double width = pointerStartBounds.Width;
+        double height = pointerStartBounds.Height;
+
+        if (pointerResizeEdges.HasFlag(ResizeEdges.Left))
+        {
+            left = pointerStartBounds.Left + deltaX;
+            width = pointerStartBounds.Width - deltaX;
+            if (width < MinWidth)
+            {
+                width = MinWidth;
+                left = pointerStartBounds.Right - width;
+            }
+        }
+        else if (pointerResizeEdges.HasFlag(ResizeEdges.Right))
+        {
+            width = Math.Max(MinWidth, pointerStartBounds.Width + deltaX);
+        }
+
+        if (pointerResizeEdges.HasFlag(ResizeEdges.Top))
+        {
+            top = pointerStartBounds.Top + deltaY;
+            height = pointerStartBounds.Height - deltaY;
+            if (height < MinHeight)
+            {
+                height = MinHeight;
+                top = pointerStartBounds.Bottom - height;
+            }
+        }
+        else if (pointerResizeEdges.HasFlag(ResizeEdges.Bottom))
+        {
+            height = Math.Max(MinHeight, pointerStartBounds.Height + deltaY);
+        }
+
+        Left = left;
+        Top = top;
+        Width = width;
+        Height = height;
     }
 
-    private void EndNativeInteraction()
+    private bool PassedDragThreshold(double deltaX, double deltaY) =>
+        Math.Abs(deltaX) >= SystemParameters.MinimumHorizontalDragDistance ||
+        Math.Abs(deltaY) >= SystemParameters.MinimumVerticalDragDistance;
+
+    private ResizeEdges GetResizeEdges(Point point)
     {
-        if (!nativeInteractionActive)
+        double width = ActualWidth > 0 ? ActualWidth : Width;
+        double height = ActualHeight > 0 ? ActualHeight : Height;
+        ResizeEdges edges = ResizeEdges.None;
+
+        if (point.X <= ResizeBorderDip)
         {
-            return;
+            edges |= ResizeEdges.Left;
+        }
+        else if (point.X >= width - ResizeBorderDip)
+        {
+            edges |= ResizeEdges.Right;
         }
 
-        nativeInteractionActive = false;
-        Rect finalBounds = CaptureBounds();
-        bool moved = PositionChanged(interactionStartBounds, finalBounds);
-        bool resized = SizeChanged(interactionStartBounds, finalBounds);
-
-        AppLog.Information(
-            "PreviewWindow",
-            $"Native resize completed for {client.DisplayName}; bounds={FormatBounds(finalBounds)}.");
-        AppLog.SetCurrentOperation("idle");
-
-        if (!layoutTrackingEnabled || suppressLayoutTracking || (!moved && !resized))
+        if (point.Y <= ResizeBorderDip)
         {
-            return;
+            edges |= ResizeEdges.Top;
+        }
+        else if (point.Y >= height - ResizeBorderDip)
+        {
+            edges |= ResizeEdges.Bottom;
         }
 
-        CommitLayout(finalBounds);
+        return edges;
+    }
+
+    private static Cursor? GetResizeCursor(ResizeEdges edges)
+    {
+        bool horizontal = edges.HasFlag(ResizeEdges.Left) || edges.HasFlag(ResizeEdges.Right);
+        bool vertical = edges.HasFlag(ResizeEdges.Top) || edges.HasFlag(ResizeEdges.Bottom);
+
+        if (horizontal && vertical)
+        {
+            bool northwestSoutheast =
+                (edges.HasFlag(ResizeEdges.Left) && edges.HasFlag(ResizeEdges.Top)) ||
+                (edges.HasFlag(ResizeEdges.Right) && edges.HasFlag(ResizeEdges.Bottom));
+            return northwestSoutheast ? Cursors.SizeNWSE : Cursors.SizeNESW;
+        }
+
+        if (horizontal)
+        {
+            return Cursors.SizeWE;
+        }
+
+        return vertical ? Cursors.SizeNS : null;
     }
 
     private void CommitLayout(Rect bounds) =>
@@ -436,17 +430,6 @@ public partial class FloatingPreviewWindow : Window
                 bounds.Top,
                 bounds.Width,
                 bounds.Height));
-
-    private bool IsInsideResizeBorder(Point point)
-    {
-        double width = ActualWidth > 0 ? ActualWidth : Width;
-        double height = ActualHeight > 0 ? ActualHeight : Height;
-
-        return point.X <= ResizeBorderDip ||
-               point.X >= width - ResizeBorderDip ||
-               point.Y <= ResizeBorderDip ||
-               point.Y >= height - ResizeBorderDip;
-    }
 
     private Rect CaptureBounds()
     {
@@ -470,43 +453,22 @@ public partial class FloatingPreviewWindow : Window
     {
         if (pointerInteractionActive)
         {
-            FinishPointerInteraction(commitMove: manualMoveStarted);
+            FinishPointerInteraction(
+                commitLayout: manualMoveStarted || manualResizeStarted);
         }
 
-        if (nativeInteractionActive)
-        {
-            AppLog.Warning(
-                "PreviewWindow",
-                $"Window for {client.DisplayName} closed during a native resize interaction.");
-            AppLog.SetCurrentOperation("idle");
-        }
-
-        hwndSource?.RemoveHook(WindowProcedure);
-        hwndSource = null;
         SourceInitialized -= OnSourceInitialized;
         Closed -= OnWindowClosed;
         AppLog.Information("PreviewWindow", $"Preview window closed for {client.DisplayName}.");
     }
 
-    private static int GetSignedLowWord(nint value) =>
-        unchecked((short)((long)value & 0xFFFF));
-
-    private static int GetSignedHighWord(nint value) =>
-        unchecked((short)(((long)value >> 16) & 0xFFFF));
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(nint windowHandle, out NativeRect rectangle);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(nint windowHandle);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    [Flags]
+    private enum ResizeEdges
     {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
+        None = 0,
+        Left = 1,
+        Top = 2,
+        Right = 4,
+        Bottom = 8,
     }
 }
