@@ -13,7 +13,7 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         ShowInTaskbar="False"
-        Background="Transparent"
+        Background="#05080C"
         Foreground="#FFFFFF"
         FontFamily="Segoe UI"
         SourceInitialized="OnServiceWindowSourceInitialized"
@@ -27,7 +27,7 @@
         LostMouseCapture="OnSurfaceLostMouseCapture">
   <Window.Resources>
     <DataTemplate x:Key="StandardPreviewTemplate">
-      <Grid Background="Transparent" ClipToBounds="True">
+      <Grid Background="#05080C" ClipToBounds="True">
         <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
                                   ThumbnailOpacity="{Binding PreviewOpacity, RelativeSource={RelativeSource AncestorType={x:Type local:FloatingPreviewWindow}}}" />
         <TextBlock Margin="12"
@@ -41,7 +41,7 @@
     </DataTemplate>
 
     <DataTemplate x:Key="ImageOnlyPreviewTemplate">
-      <Grid Background="Transparent" ClipToBounds="True">
+      <Grid Background="#05080C" ClipToBounds="True">
         <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
                                   ThumbnailOpacity="{Binding PreviewOpacity, RelativeSource={RelativeSource AncestorType={x:Type local:FloatingPreviewWindow}}}" />
         <TextBlock Margin="12"
@@ -108,7 +108,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Border Background="Transparent" BorderThickness="0" SnapsToDevicePixels="True">
+  <Border Background="#05080C" BorderThickness="0" SnapsToDevicePixels="True">
     <ContentControl Content="{Binding}">
       <ContentControl.Style>
         <Style TargetType="ContentControl">
