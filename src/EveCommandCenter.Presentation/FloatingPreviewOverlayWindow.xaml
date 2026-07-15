@@ -10,10 +10,11 @@
         ShowActivated="False"
         Focusable="False"
         IsHitTestVisible="False"
-        Topmost="False">
+        Topmost="False"
+        Opacity="{Binding PreviewOwner.PreviewOpacity, RelativeSource={RelativeSource Self}}">
   <Window.Resources>
     <Style x:Key="OverlayPrimaryText" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="#FFD34A" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="Effect">
@@ -24,7 +25,7 @@
     </Style>
 
     <Style x:Key="OverlaySecondaryText" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="#F2F6FA" />
+      <Setter Property="Foreground" Value="#D9EEFF" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="Effect">
