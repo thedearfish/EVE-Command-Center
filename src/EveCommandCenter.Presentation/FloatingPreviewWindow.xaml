@@ -3,9 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:EveCommandCenter.Presentation"
         xmlns:preview="clr-namespace:EveCommandCenter.Windows.Preview;assembly=EveCommandCenter.Windows"
-        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         local:PreviewGroupingBehavior.IsEnabled="True"
-        local:PreviewGroupGapBehavior.IsEnabled="True"
         Title="{Binding DisplayName}"
         Width="320"
         Height="210"
@@ -15,7 +13,7 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         ShowInTaskbar="False"
-        Background="#05080C"
+        Background="Transparent"
         Foreground="#FFFFFF"
         FontFamily="Segoe UI"
         SourceInitialized="OnServiceWindowSourceInitialized"
@@ -27,18 +25,11 @@
         PreviewMouseMove="OnSurfacePreviewMouseMove"
         PreviewMouseLeftButtonUp="OnSurfacePreviewMouseLeftButtonUp"
         LostMouseCapture="OnSurfaceLostMouseCapture">
-  <shell:WindowChrome.WindowChrome>
-    <shell:WindowChrome CaptionHeight="0"
-                        ResizeBorderThickness="8"
-                        GlassFrameThickness="0"
-                        CornerRadius="0"
-                        UseAeroCaptionButtons="False" />
-  </shell:WindowChrome.WindowChrome>
-
   <Window.Resources>
     <DataTemplate x:Key="StandardPreviewTemplate">
-      <Grid Background="#05080C" ClipToBounds="True">
-        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
+      <Grid Background="Transparent" ClipToBounds="True">
+        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
+                                  ThumbnailOpacity="{Binding PreviewOpacity, RelativeSource={RelativeSource AncestorType={x:Type local:FloatingPreviewWindow}}}" />
         <TextBlock Margin="12"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
@@ -50,8 +41,9 @@
     </DataTemplate>
 
     <DataTemplate x:Key="ImageOnlyPreviewTemplate">
-      <Grid Background="#05080C" ClipToBounds="True">
-        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}" />
+      <Grid Background="Transparent" ClipToBounds="True">
+        <preview:DwmThumbnailHost SourceWindowId="{Binding SourceWindowId, Mode=OneWay}"
+                                  ThumbnailOpacity="{Binding PreviewOpacity, RelativeSource={RelativeSource AncestorType={x:Type local:FloatingPreviewWindow}}}" />
         <TextBlock Margin="12"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
@@ -65,9 +57,11 @@
     <DataTemplate x:Key="TextOnlyPreviewTemplate">
       <Border Padding="14,10"
               Background="#3A3F45"
-              BorderThickness="0">
+              BorderThickness="0"
+              Opacity="{Binding PreviewOpacity, RelativeSource={RelativeSource AncestorType={x:Type local:FloatingPreviewWindow}}}">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
           <TextBlock HorizontalAlignment="Center"
+                     Foreground="#FFD34A"
                      FontSize="15"
                      FontWeight="SemiBold"
                      TextAlignment="Center"
@@ -75,7 +69,7 @@
                      Text="{Binding DisplayName}" />
           <TextBlock Margin="0,2,0,0"
                      HorizontalAlignment="Center"
-                     Foreground="#F2F6FA"
+                     Foreground="#D9EEFF"
                      FontSize="12"
                      TextAlignment="Center"
                      TextTrimming="CharacterEllipsis"
@@ -114,7 +108,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Border Background="#05080C" BorderThickness="0" SnapsToDevicePixels="True">
+  <Border Background="Transparent" BorderThickness="0" SnapsToDevicePixels="True">
     <ContentControl Content="{Binding}">
       <ContentControl.Style>
         <Style TargetType="ContentControl">
