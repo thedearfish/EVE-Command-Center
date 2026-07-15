@@ -224,16 +224,19 @@ public partial class FloatingPreviewWindow
             HwndSource? source = HwndSource.FromHwnd(handle);
             if (source?.CompositionTarget is not null)
             {
-                source.CompositionTarget.BackgroundColor = Colors.Transparent;
+                source.CompositionTarget.BackgroundColor = Color.FromRgb(5, 8, 12);
             }
 
-            var glassMargins = new DwmMargins(-1, -1, -1, -1);
+            // Full-client DWM glass produced a bright strip on recent Windows builds.
+            // Explicitly reset all glass margins to zero and keep only the border and
+            // corner suppression attributes.
+            var glassMargins = new DwmMargins(0, 0, 0, 0);
             int glassResult = DwmExtendFrameIntoClientArea(handle, ref glassMargins);
             if (glassResult != 0)
             {
                 AppLog.Warning(
-                    "Opacity",
-                    $"Could not extend transparent DWM frame for {client.DisplayName}; HRESULT=0x{glassResult:X8}.");
+                    "PreviewWindow",
+                    $"Could not reset DWM glass margins for {client.DisplayName}; HRESULT=0x{glassResult:X8}.");
             }
 
             uint borderColor = DwmColorNone;
@@ -261,7 +264,7 @@ public partial class FloatingPreviewWindow
         }
         catch (Exception exception)
         {
-            AppLog.Warning("PreviewWindow", "Could not configure the frameless transparent preview surface.", exception);
+            AppLog.Warning("PreviewWindow", "Could not configure the frameless preview surface.", exception);
         }
     }
 
